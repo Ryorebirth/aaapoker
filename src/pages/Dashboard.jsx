@@ -3,12 +3,14 @@ import { api } from "../api.js";
 import { C, DEFAULT_TITLE, FONT, isEnter } from "../utils.js";
 import RankingTab from "./RankingTab.jsx";
 import SngTab from "./SngTab.jsx";
+import RewardsTab from "./RewardsTab.jsx";
 import LogsTab from "./LogsTab.jsx";
 import AdminsTab from "./AdminsTab.jsx";
 
 const TABS = [
   ["ranking", "Cash Game"],
   ["sng", "Sit and Go"],
+  ["rewards", "獎勵紀錄表"],
   ["logs", "修改紀錄"],
   ["admins", "管理員"],
 ];
@@ -18,6 +20,7 @@ export default function Dashboard({ admin, onSignedOut }) {
   const [players, setPlayers] = useState([]);
   const [sng, setSng] = useState({ standings: [], games: [], totalGames: 0 });
   const [sngLoaded, setSngLoaded] = useState(false);
+  const [rewards, setRewards] = useState({ rewards: [], history: [] });
   const [title, setTitle] = useState(DEFAULT_TITLE);
   const [titleDraft, setTitleDraft] = useState(DEFAULT_TITLE);
   const [loaded, setLoaded] = useState(false);
@@ -47,7 +50,8 @@ export default function Dashboard({ admin, onSignedOut }) {
 
   const refresh = useCallback(async () => {
     try {
-      const [r, s] = await Promise.all([call("/players"), call("/sng")]);
+      const [r, s, rw] = await Promise.all([call("/players"), call("/sng"), call("/rewards")]);
+      setRewards(rw);
       setPlayers(r.players);
       setTitle(r.title);
       if (!titleFocused.current) setTitleDraft(r.title);
@@ -145,6 +149,8 @@ export default function Dashboard({ admin, onSignedOut }) {
                 <div className="font-semibold text-white">
                   {tab === "sng"
                     ? `${sng.standings.length} 位玩家　${sng.totalGames} 場`
+                    : tab === "rewards"
+                    ? `${rewards.rewards.reduce((n, r) => n + r.available, 0)} 個未使用獎勵`
                     : `${players.filter((p) => p.inCash).length} 位玩家`}
                 </div>
                 <div
@@ -210,6 +216,9 @@ export default function Dashboard({ admin, onSignedOut }) {
             refresh={refresh}
             flash={flash}
           />
+        )}
+        {tab === "rewards" && (
+          <RewardsTab data={rewards} loaded={sngLoaded} title={title} call={call} refresh={refresh} flash={flash} />
         )}
         {tab === "logs" && <LogsTab call={call} title={title} />}
         {tab === "admins" && <AdminsTab admin={admin} call={call} flash={flash} />}

@@ -4,7 +4,9 @@ import { buildSngImage } from "../exportImage.js";
 import {
   C,
   CHIP,
+  DEFAULT_REWARD,
   DEFAULT_TITLE,
+  REWARD_OPTIONS,
   btnPrimary,
   btnRow,
   btnSecondary,
@@ -23,8 +25,32 @@ import {
 
 const MASK_KEY = "poker-ranking:mask-export";
 const PLACES = [1, 2, 3];
-const emptyEntry = () => ({ name: "", phone: "", reward: "" });
-const emptyForm = () => ({ title: "", 1: emptyEntry(), 2: emptyEntry(), 3: emptyEntry() });
+const emptyEntry = (place) => ({ name: "", phone: "", reward: DEFAULT_REWARD[place] });
+const emptyForm = () => ({ title: "", 1: emptyEntry(1), 2: emptyEntry(2), 3: emptyEntry(3) });
+
+const selectCls =
+  "w-full px-3 py-2 rounded-md border text-base bg-white focus:outline-none focus:ring-2 focus:ring-emerald-700";
+
+function RewardSelect({ id, value, onChange, disabled }) {
+  const options = value && !REWARD_OPTIONS.includes(value) ? [...REWARD_OPTIONS, value] : REWARD_OPTIONS;
+  return (
+    <select
+      id={id}
+      className={selectCls}
+      style={{ borderColor: C.line }}
+      value={value || ""}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.value)}
+    >
+      <option value="">不設獎勵</option>
+      {options.map((o) => (
+        <option key={o} value={o}>
+          {o}
+        </option>
+      ))}
+    </select>
+  );
+}
 
 function readMask() {
   try {
@@ -93,13 +119,24 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
         method: "POST",
         body: {
           title: form.title,
-          results: PLACES.map((place) => ({ place, ...form[place] })),
+          // A reward is only sent for places that have a player
+          results: PLACES.map((place) => {
+            const e = form[place];
+            const hasPlayer = e.name.trim() || e.phone.trim();
+            return { place, name: e.name, phone: e.phone, reward: hasPlayer ? e.reward : "" };
+          }),
         },
       });
       setForm(emptyForm());
       await refresh();
       const winner = r.game.results.find((x) => x.place === 1);
-      flash(r.notices.length ? r.notices.join("；") : `已記錄賽果，第 1 名：${winner ? winner.name : ""}`);
+      flash(
+        r.notices.length
+          ? r.notices.join("；")
+          : winner
+          ? `已記錄賽果，第 1 名：${winner.name}`
+          : "已記錄賽果"
+      );
     } catch (e) {
       setFormError(e.message);
     } finally {
@@ -199,7 +236,7 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
           cells.push(
             r ? r.name : "",
             r ? `="${maskOn ? maskPhone(r.phone) : r.phone}"` : "",
-            r ? r.reward || "" : ""
+            r ? (r.reward ? `${r.reward}${r.rewardUsedAt ? "（已使用）" : ""}` : "") : ""
           );
         });
         cells.push(g.createdBy);
@@ -233,7 +270,7 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
             記錄賽果
           </h2>
           <p className="text-xs mb-4" style={{ color: C.muted }}>
-            輸入這場 Sit and Go 頭三名的姓名和手機號。日期會自動記錄。
+            頭三名全部選填，沒有的名次留空即可。日期會自動記錄。
           </p>
 
           <label htmlFor="sng-title" className="block text-sm font-medium mb-1">
@@ -268,11 +305,9 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
                   <div className="flex items-center gap-2 mb-2">
                     <RankMark rank={place} />
                     <span className="font-semibold">第 {place} 名</span>
-                    {place > 1 && (
-                      <span className="text-xs" style={{ color: C.muted }}>
-                        可留空
-                      </span>
-                    )}
+                    <span className="text-xs" style={{ color: C.muted }}>
+                      選填
+                    </span>
                   </div>
                   <div className="flex flex-col gap-2">
                     <div>
@@ -330,19 +365,18 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
                     </div>
                     <div>
                       <label htmlFor={`sng-r-${place}`} className="block text-xs font-medium mb-1">
-                        獎勵（選填）
+                        獎勵
                       </label>
-                      <input
+                      <RewardSelect
                         id={`sng-r-${place}`}
-                        className={inputCls}
-                        style={{ borderColor: C.line }}
                         value={entry.reward}
-                        maxLength={100}
-                        autoComplete="off"
-                        placeholder="例如：$500 或 免費入場券"
-                        onChange={(e) => setPlace(place, { reward: e.target.value })}
-                        onKeyDown={(e) => isEnter(e) && saveGame()}
+                        onChange={(v) => setPlace(place, { reward: v })}
                       />
+                      {!entry.name.trim() && !entry.phone.trim() && entry.reward && (
+                        <p className="text-xs mt-1" style={{ color: C.muted }}>
+                          沒有輸入玩家時不會記錄獎勵
+                        </p>
+                      )}
                     </div>
                   </div>
                 </fieldset>
@@ -364,7 +398,7 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
             {saving ? "儲存中…" : "儲存賽果"}
           </button>
           <p className="text-xs mt-3 leading-relaxed" style={{ color: C.muted }}>
-            同一個手機號會被視為同一位玩家，Cash Game 和 Sit and Go 共用玩家資料。獎勵只在後台顯示，不會出現在即時排行榜。
+            如果輸入某個名次，姓名和手機號都要填。同一個手機號會被視為同一位玩家。獎勵只在後台顯示，不會出現在即時排行榜。
           </p>
         </section>
 
@@ -596,6 +630,11 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
                       </div>
                     </div>
                     <ol className="flex-1 flex flex-col gap-2" style={{ minWidth: 220 }}>
+                      {!g.results.length && (
+                        <li className="text-sm" style={{ color: C.muted }}>
+                          沒有輸入名次
+                        </li>
+                      )}
                       {g.results.map((r) => {
                         const isEditing =
                           rewardEdit && rewardEdit.gameId === g.id && rewardEdit.place === r.place;
@@ -619,20 +658,13 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
                                 <label htmlFor={`rw-${g.id}-${r.place}`} className="sr-only">
                                   第 {r.place} 名獎勵
                                 </label>
-                                <input
-                                  id={`rw-${g.id}-${r.place}`}
-                                  autoFocus
-                                  className={inputCls}
-                                  style={{ borderColor: C.line, maxWidth: 220 }}
-                                  value={rewardEdit.value}
-                                  maxLength={100}
-                                  placeholder="例如：$500"
-                                  onChange={(e) => setRewardEdit({ ...rewardEdit, value: e.target.value })}
-                                  onKeyDown={(e) => {
-                                    if (isEnter(e)) saveReward();
-                                    if (e.key === "Escape") setRewardEdit(null);
-                                  }}
-                                />
+                                <div style={{ width: 180 }}>
+                                  <RewardSelect
+                                    id={`rw-${g.id}-${r.place}`}
+                                    value={rewardEdit.value}
+                                    onChange={(v) => setRewardEdit({ ...rewardEdit, value: v })}
+                                  />
+                                </div>
                                 <button
                                   className={btnPrimary}
                                   style={{ background: C.felt }}
@@ -657,8 +689,25 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
                             ) : (
                               <div className="flex flex-wrap items-center gap-x-2" style={{ paddingLeft: 32 }}>
                                 <span style={{ color: r.reward ? C.ink : C.muted }}>
-                                  獎勵：{r.reward || "未填"}
+                                  獎勵：{r.reward || "不設獎勵"}
                                 </span>
+                                {r.reward && r.rewardUsedAt ? (
+                                  <span
+                                    className="px-1.5 py-0.5 rounded text-xs font-semibold"
+                                    style={{ background: "#FBEAE8", color: C.red }}
+                                    title={`${fmtDateTime(r.rewardUsedAt)}　${r.rewardUsedBy || ""}`}
+                                  >
+                                    已使用 {fmtDate(r.rewardUsedAt)}
+                                  </span>
+                                ) : r.reward ? (
+                                  <span
+                                    className="px-1.5 py-0.5 rounded text-xs font-semibold"
+                                    style={{ background: C.tint, color: C.felt }}
+                                  >
+                                    未使用
+                                  </span>
+                                ) : null}
+                                {!r.rewardUsedAt && (
                                 <button
                                   className="px-1 rounded text-sm underline focus:outline-none focus:ring-2 focus:ring-emerald-700"
                                   style={{ color: C.felt }}
@@ -670,6 +719,7 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
                                 >
                                   修改
                                 </button>
+                                )}
                               </div>
                             )}
                           </li>

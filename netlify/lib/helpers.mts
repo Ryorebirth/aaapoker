@@ -145,3 +145,16 @@ export function validId(v: string | undefined): number {
   if (!Number.isInteger(n) || n <= 0) throw new HttpError(404, "找不到這筆資料");
   return n;
 }
+
+// ---------- Sit and Go rewards ----------
+
+export const REWARD_OPTIONS = ["盲盒", "20000積分", "10000積分"] as const;
+
+export function validReward(v: unknown, label = ""): string | null {
+  const s = String(v ?? "").trim();
+  if (!s) return null;
+  if (!(REWARD_OPTIONS as readonly string[]).includes(s)) {
+    throw new HttpError(400, `${label}獎勵只可以選擇：${REWARD_OPTIONS.join("、")}`);
+  }
+  return s;
+}

@@ -135,3 +135,6 @@ export function rankSng(standings) {
 }
 
 export const BOARD_NAMES = { cash: "Cash Game", sng: "Sit and Go" };
+
+export const REWARD_OPTIONS = ["盲盒", "20000積分", "10000積分"];
+export const DEFAULT_REWARD = { 1: "盲盒", 2: "20000積分", 3: "10000積分" };

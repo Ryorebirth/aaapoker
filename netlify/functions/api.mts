@@ -13,6 +13,8 @@ import {
   json,
   maskPhone,
   newSessionToken,
+  REWARD_OPTIONS,
+  validReward,
   normPhone,
   readJson,
   sessionCookie,
@@ -412,7 +414,8 @@ async function listSng(url: URL) {
     `SELECT g.id, g.title, g.created_by, g.created_at,
             COALESCE(
               json_agg(json_build_object('place', r.place, 'playerId', p.id, 'name', p.name, 'phone', p.phone,
-                                         'reward', r.reward)
+                                         'reward', r.reward, 'rewardUsedAt', r.reward_used_at,
+                                         'rewardUsedBy', r.reward_used_by)
                        ORDER BY r.place) FILTER (WHERE r.place IS NOT NULL),
               '[]'
             ) AS results
@@ -449,20 +452,20 @@ async function createSngGame(req: Request, admin: Admin) {
     if (![1, 2, 3].includes(place)) throw new HttpError(400, "名次只可以是第 1、2 或 3 名");
     const name = String((item as any)?.name ?? "").trim();
     const phone = String((item as any)?.phone ?? "").trim();
-    const reward = String((item as any)?.reward ?? "").trim();
-    if (!name && !phone && !reward) continue;
     const label = PLACE_LABEL[place];
+    const reward = validReward((item as any)?.reward, `${label}：`);
+    if (!name && !phone) {
+      if (reward) throw new HttpError(400, `${label}：選擇獎勵前請先輸入玩家姓名和手機號`);
+      continue;
+    }
     if (!name) throw new HttpError(400, `${label}：請輸入姓名`);
     if (name.length > 50) throw new HttpError(400, `${label}：姓名不可超過 50 個字`);
     if (!/^\+?[\d\s-]{6,20}$/.test(phone)) throw new HttpError(400, `${label}：手機號格式不正確`);
-    if (reward.length > 100) throw new HttpError(400, `${label}：獎勵不可超過 100 個字`);
-    entries.push({ place, name, phone, phoneNormalized: normPhone(phone), reward: reward || null });
+    entries.push({ place, name, phone, phoneNormalized: normPhone(phone), reward });
   }
 
   const places = entries.map((e) => e.place);
-  if (!places.includes(1)) throw new HttpError(400, "請輸入第 1 名的姓名和手機號");
   if (new Set(places).size !== places.length) throw new HttpError(400, "每個名次只可以有一位玩家");
-  if (places.includes(3) && !places.includes(2)) throw new HttpError(400, "請先輸入第 2 名");
   if (new Set(entries.map((e) => e.phoneNormalized)).size !== entries.length) {
     throw new HttpError(400, "同一個手機號不可以同時拿兩個名次");
   }
@@ -519,11 +522,10 @@ async function createSngGame(req: Request, admin: Admin) {
 async function updateSngReward(req: Request, admin: Admin, gameId: number, place: number) {
   if (![1, 2, 3].includes(place)) throw new HttpError(404, "找不到這個名次");
   const body = await readJson(req);
-  const reward = String(body.reward ?? "").trim();
-  if (reward.length > 100) throw new HttpError(400, "獎勵不可超過 100 個字");
+  const reward = validReward(body.reward);
   const result = await tx(async (query) => {
     const [row] = await query(
-      `SELECT r.reward, g.id AS game_id, g.title, p.id AS player_id, p.name, p.phone
+      `SELECT r.reward, r.reward_used_at, g.id AS game_id, g.title, p.id AS player_id, p.name, p.phone
          FROM sng_results r
          JOIN sng_games g ON g.id = r.game_id
          JOIN players p ON p.id = r.player_id
@@ -532,8 +534,11 @@ async function updateSngReward(req: Request, admin: Admin, gameId: number, place
       [gameId, place]
     );
     if (!row) throw new HttpError(404, "找不到這個名次的賽果，可能已被刪除");
-    const next = reward || null;
+    const next = reward;
     if ((row.reward ?? null) === next) return { reward: next };
+    if (row.reward_used_at) {
+      throw new HttpError(409, "這個獎勵已經使用，請先在獎勵紀錄表取消使用，才可以修改");
+    }
     await query(`UPDATE sng_results SET reward = $1 WHERE game_id = $2 AND place = $3`, [next, gameId, place]);
     const gameLabel = row.title || `第 ${row.game_id} 場`;
     await log(query, {
@@ -550,12 +555,153 @@ async function updateSngReward(req: Request, admin: Admin, gameId: number, place
   return json(result);
 }
 
+// ---------- Reward ledger ----------
+
+async function listRewards() {
+  const holders = await q(
+    `SELECT r.reward, p.id, p.name, p.phone,
+            COUNT(*) FILTER (WHERE r.reward_used_at IS NULL)::int AS available,
+            COUNT(*) FILTER (WHERE r.reward_used_at IS NOT NULL)::int AS used,
+            MAX(g.created_at) AS last_won_at
+       FROM sng_results r
+       JOIN players p ON p.id = r.player_id
+       JOIN sng_games g ON g.id = r.game_id
+      WHERE r.reward IS NOT NULL
+      GROUP BY r.reward, p.id, p.name, p.phone
+      ORDER BY r.reward, available DESC, p.name`
+  );
+  const history = await q(
+    `SELECT r.game_id, r.place, r.reward, r.reward_used_at, r.reward_used_by,
+            p.id AS player_id, p.name, p.phone, g.title, g.created_at AS game_at
+       FROM sng_results r
+       JOIN players p ON p.id = r.player_id
+       JOIN sng_games g ON g.id = r.game_id
+      WHERE r.reward IS NOT NULL AND r.reward_used_at IS NOT NULL
+      ORDER BY r.reward_used_at DESC
+      LIMIT 300`
+  );
+  const types = [...REWARD_OPTIONS] as string[];
+  holders.forEach((h) => {
+    if (!types.includes(h.reward)) types.push(h.reward);
+  });
+  return json({
+    options: REWARD_OPTIONS,
+    rewards: types.map((type) => {
+      const list = holders.filter((h) => h.reward === type);
+      return {
+        reward: type,
+        available: list.reduce((n, h) => n + h.available, 0),
+        used: list.reduce((n, h) => n + h.used, 0),
+        holders: list.map((h) => ({
+          playerId: h.id,
+          name: h.name,
+          phone: h.phone,
+          available: h.available,
+          used: h.used,
+          lastWonAt: h.last_won_at,
+        })),
+      };
+    }),
+    history: history.map((h) => ({
+      gameId: h.game_id,
+      place: h.place,
+      reward: h.reward,
+      usedAt: h.reward_used_at,
+      usedBy: h.reward_used_by,
+      playerId: h.player_id,
+      name: h.name,
+      phone: h.phone,
+      gameTitle: h.title || `第 ${h.game_id} 場`,
+      gameAt: h.game_at,
+    })),
+  });
+}
+
+async function useReward(req: Request, admin: Admin) {
+  const body = await readJson(req);
+  const playerId = validId(String(body.playerId ?? ""));
+  const reward = String(body.reward ?? "").trim();
+  if (!reward) throw new HttpError(400, "請選擇獎勵");
+  const result = await tx(async (query) => {
+    // Use the oldest unused reward of this type first
+    const [item] = await query(
+      `SELECT r.game_id, r.place, g.title, p.name, p.phone
+         FROM sng_results r
+         JOIN sng_games g ON g.id = r.game_id
+         JOIN players p ON p.id = r.player_id
+        WHERE r.player_id = $1 AND r.reward = $2 AND r.reward_used_at IS NULL
+        ORDER BY g.created_at ASC, r.game_id ASC
+        LIMIT 1
+        FOR UPDATE OF r`,
+      [playerId, reward]
+    );
+    if (!item) throw new HttpError(409, `這位玩家已經沒有未使用的「${reward}」`);
+    await query(
+      `UPDATE sng_results SET reward_used_at = NOW(), reward_used_by = $1 WHERE game_id = $2 AND place = $3`,
+      [admin.username, item.game_id, item.place]
+    );
+    const [{ left }] = await query(
+      `SELECT COUNT(*)::int AS left FROM sng_results
+        WHERE player_id = $1 AND reward = $2 AND reward_used_at IS NULL`,
+      [playerId, reward]
+    );
+    const gameLabel = item.title || `第 ${item.game_id} 場`;
+    await log(query, {
+      action: "reward_use",
+      board: "sng",
+      admin: admin.username,
+      playerId,
+      playerName: item.name,
+      playerPhone: item.phone,
+      detail: `使用「${reward}」（來自 ${gameLabel} ${PLACE_LABEL[item.place]}），尚餘 ${left} 個`,
+    });
+    return { name: item.name, reward, left, gameId: item.game_id, place: item.place };
+  });
+  return json(result);
+}
+
+async function undoReward(req: Request, admin: Admin) {
+  const body = await readJson(req);
+  const gameId = validId(String(body.gameId ?? ""));
+  const place = Number(body.place);
+  if (![1, 2, 3].includes(place)) throw new HttpError(404, "找不到這個名次");
+  const result = await tx(async (query) => {
+    const [item] = await query(
+      `SELECT r.reward, r.reward_used_at, g.title, p.id AS player_id, p.name, p.phone
+         FROM sng_results r
+         JOIN sng_games g ON g.id = r.game_id
+         JOIN players p ON p.id = r.player_id
+        WHERE r.game_id = $1 AND r.place = $2
+        FOR UPDATE OF r`,
+      [gameId, place]
+    );
+    if (!item || !item.reward) throw new HttpError(404, "找不到這個獎勵，可能已被刪除");
+    if (!item.reward_used_at) throw new HttpError(409, "這個獎勵本來就未使用");
+    await query(
+      `UPDATE sng_results SET reward_used_at = NULL, reward_used_by = NULL WHERE game_id = $1 AND place = $2`,
+      [gameId, place]
+    );
+    const gameLabel = item.title || `第 ${gameId} 場`;
+    await log(query, {
+      action: "reward_undo",
+      board: "sng",
+      admin: admin.username,
+      playerId: item.player_id,
+      playerName: item.name,
+      playerPhone: item.phone,
+      detail: `取消使用「${item.reward}」（${gameLabel} ${PLACE_LABEL[place]}）`,
+    });
+    return { name: item.name, reward: item.reward };
+  });
+  return json(result);
+}
+
 async function deleteSngGame(admin: Admin, id: number) {
   await tx(async (query) => {
     const [game] = await query(`SELECT * FROM sng_games WHERE id = $1 FOR UPDATE`, [id]);
     if (!game) throw new HttpError(404, "找不到這場賽果，可能已被刪除");
     const results = await query(
-      `SELECT r.place, r.reward, p.id, p.name, p.phone FROM sng_results r JOIN players p ON p.id = r.player_id
+      `SELECT r.place, r.reward, r.reward_used_at, p.id, p.name, p.phone FROM sng_results r JOIN players p ON p.id = r.player_id
         WHERE r.game_id = $1 ORDER BY r.place`,
       [id]
     );
@@ -569,7 +715,9 @@ async function deleteSngGame(admin: Admin, id: number) {
         playerId: r.id,
         playerName: r.name,
         playerPhone: r.phone,
-        detail: `刪除 ${gameLabel} ${PLACE_LABEL[r.place]}${r.reward ? `（獎勵：${r.reward}）` : ""}`,
+        detail: `刪除 ${gameLabel} ${PLACE_LABEL[r.place]}${
+          r.reward ? `（獎勵：${r.reward}${r.reward_used_at ? "，已使用" : "，未使用"}）` : ""
+        }`,
       });
     }
     // Remove players who were only in this Sit and Go and have no other records
@@ -803,6 +951,9 @@ export default async (req: Request, _context: Context) => {
         return await deleteSngGame(admin, validId(seg[2]));
       }
     }
+    if (path === "/rewards" && method === "GET") return await listRewards();
+    if (path === "/rewards/use" && method === "POST") return await useReward(req, admin);
+    if (path === "/rewards/undo" && method === "POST") return await undoReward(req, admin);
     if (path === "/logs" && method === "GET") return await listLogs(url);
     if (path === "/settings" && method === "PUT") return await updateSettings(req, admin);
     if (seg[0] === "admins") {

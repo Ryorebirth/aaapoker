@@ -27,6 +27,8 @@ const ACTIONS = {
   sng_result: "記錄賽果",
   sng_delete: "刪除賽果",
   sng_reward: "修改獎勵",
+  reward_use: "使用獎勵",
+  reward_undo: "取消使用獎勵",
 };
 
 const FILTERS = [
