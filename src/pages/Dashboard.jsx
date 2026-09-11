@@ -2,11 +2,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
 import { C, DEFAULT_TITLE, FONT, isEnter } from "../utils.js";
 import RankingTab from "./RankingTab.jsx";
+import SngTab from "./SngTab.jsx";
 import LogsTab from "./LogsTab.jsx";
 import AdminsTab from "./AdminsTab.jsx";
 
 const TABS = [
-  ["ranking", "排名"],
+  ["ranking", "Cash Game"],
+  ["sng", "Sit and Go"],
   ["logs", "修改紀錄"],
   ["admins", "管理員"],
 ];
@@ -14,6 +16,8 @@ const TABS = [
 export default function Dashboard({ admin, onSignedOut }) {
   const [tab, setTab] = useState("ranking");
   const [players, setPlayers] = useState([]);
+  const [sng, setSng] = useState({ standings: [], games: [], totalGames: 0 });
+  const [sngLoaded, setSngLoaded] = useState(false);
   const [title, setTitle] = useState(DEFAULT_TITLE);
   const [titleDraft, setTitleDraft] = useState(DEFAULT_TITLE);
   const [loaded, setLoaded] = useState(false);
@@ -43,10 +47,12 @@ export default function Dashboard({ admin, onSignedOut }) {
 
   const refresh = useCallback(async () => {
     try {
-      const r = await call("/players");
+      const [r, s] = await Promise.all([call("/players"), call("/sng")]);
       setPlayers(r.players);
       setTitle(r.title);
       if (!titleFocused.current) setTitleDraft(r.title);
+      setSng(s);
+      setSngLoaded(true);
       setSyncError("");
     } catch (e) {
       if (e.status !== 401) setSyncError(e.message);
@@ -136,7 +142,11 @@ export default function Dashboard({ admin, onSignedOut }) {
                 即時排行榜
               </a>
               <div className="text-sm text-right" style={{ color: "rgba(255,255,255,0.85)" }}>
-                <div className="font-semibold text-white">{players.length} 位玩家</div>
+                <div className="font-semibold text-white">
+                  {tab === "sng"
+                    ? `${sng.standings.length} 位玩家　${sng.totalGames} 場`
+                    : `${players.filter((p) => p.inCash).length} 位玩家`}
+                </div>
                 <div
                   className="text-xs"
                   style={{ color: syncError ? "#F3B3AD" : "rgba(255,255,255,0.65)" }}
@@ -147,7 +157,7 @@ export default function Dashboard({ admin, onSignedOut }) {
               </div>
             </div>
           </div>
-          <nav className="flex gap-1" aria-label="功能">
+          <nav className="flex gap-1 overflow-x-auto" aria-label="功能">
             {TABS.map(([key, label]) => {
               const active = tab === key;
               return (
@@ -155,7 +165,7 @@ export default function Dashboard({ admin, onSignedOut }) {
                   key={key}
                   onClick={() => setTab(key)}
                   aria-current={active ? "page" : undefined}
-                  className="px-4 py-2 text-sm font-semibold rounded-t-md focus:outline-none focus:ring-2 focus:ring-yellow-600"
+                  className="px-3 sm:px-4 py-2 text-sm font-semibold rounded-t-md whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-yellow-600"
                   style={{
                     background: active ? C.page : "transparent",
                     color: active ? C.ink : "rgba(255,255,255,0.8)",
@@ -185,6 +195,17 @@ export default function Dashboard({ admin, onSignedOut }) {
             setPlayers={setPlayers}
             title={title}
             loaded={loaded}
+            call={call}
+            refresh={refresh}
+            flash={flash}
+          />
+        )}
+        {tab === "sng" && (
+          <SngTab
+            sng={sng}
+            loaded={sngLoaded}
+            players={players}
+            title={title}
             call={call}
             refresh={refresh}
             flash={flash}

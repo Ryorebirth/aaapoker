@@ -7,13 +7,14 @@ function fitText(ctx, text, max) {
   return s + "…";
 }
 
-// ranked: [{ rank, name, points, updatedAt }], phoneOf: (player) => string
-export function buildRankingImage({ title, ranked, phoneOf }) {
+// Generic ranking image.
+// columns: [{ label, x, align: "left"|"center"|"right", max, font, color, value: (row) => string }]
+function buildImage({ title, subtitle, rows: allRows, columns, note }) {
   const LIMIT = 150;
-  const rows = ranked.slice(0, LIMIT);
+  const rows = allRows.slice(0, LIMIT);
   const W = 1080;
   const pad = 56;
-  const headerH = 210;
+  const headerH = 230;
   const colH = 64;
   const rowH = 84;
   const footH = 96;
@@ -34,28 +35,28 @@ export function buildRankingImage({ title, ranked, phoneOf }) {
   ctx.textAlign = "right";
   ctx.fillStyle = C.brass;
   ctx.font = `40px ${FONT}`;
-  ctx.fillText("♠ ♥ ♦ ♣", W - pad, 92);
+  ctx.fillText("♠ ♥ ♦ ♣", W - pad, 80);
 
   ctx.textAlign = "left";
+  ctx.fillStyle = C.brass;
+  ctx.font = `bold 30px ${FONT}`;
+  ctx.fillText(subtitle, pad, 62);
   ctx.fillStyle = "#FFFFFF";
   ctx.font = `bold 58px ${FONT}`;
-  ctx.fillText(fitText(ctx, title || DEFAULT_TITLE, W - pad * 2 - 200), pad, 92);
+  ctx.fillText(fitText(ctx, title || DEFAULT_TITLE, W - pad * 2 - 200), pad, 122);
   ctx.font = `28px ${FONT}`;
   ctx.fillStyle = "rgba(255,255,255,0.75)";
-  ctx.fillText(`${today()}　共 ${ranked.length} 位玩家`, pad, 152);
+  ctx.fillText(`${today()}　共 ${allRows.length} 位玩家`, pad, 182);
 
-  const xName = pad + 100;
-  const xPhone = 470;
-  const xDate = 700;
   const cy0 = headerH + colH / 2;
   ctx.font = `24px ${FONT}`;
   ctx.fillStyle = C.muted;
+  ctx.textAlign = "left";
   ctx.fillText("排名", pad, cy0);
-  ctx.fillText("姓名", xName, cy0);
-  ctx.fillText("手機號", xPhone, cy0);
-  ctx.fillText("最後更新", xDate, cy0);
-  ctx.textAlign = "right";
-  ctx.fillText("積分", W - pad, cy0);
+  columns.forEach((col) => {
+    ctx.textAlign = col.align || "left";
+    ctx.fillText(col.label, col.x, cy0);
+  });
   ctx.strokeStyle = C.line;
   ctx.lineWidth = 2;
   ctx.beginPath();
@@ -93,29 +94,54 @@ export function buildRankingImage({ title, ranked, phoneOf }) {
     }
     ctx.fillText(String(p.rank), cx, cy + 1);
 
-    ctx.textAlign = "left";
-    ctx.fillStyle = C.ink;
-    ctx.font = `bold 32px ${FONT}`;
-    ctx.fillText(fitText(ctx, p.name, xPhone - xName - 30), xName, cy);
-    ctx.fillStyle = C.muted;
-    ctx.font = `28px ${FONT}`;
-    ctx.fillText(fitText(ctx, phoneOf(p), xDate - xPhone - 20), xPhone, cy);
-    ctx.font = `24px ${FONT}`;
-    ctx.fillText(fmtDate(p.updatedAt), xDate, cy);
-    ctx.textAlign = "right";
-    ctx.fillStyle = C.ink;
-    ctx.font = `bold 36px ${FONT}`;
-    ctx.fillText(fmt(p.points), W - pad, cy);
+    columns.forEach((col) => {
+      ctx.textAlign = col.align || "left";
+      ctx.fillStyle = col.color || C.ink;
+      ctx.font = `${col.font || "28px"} ${FONT}`;
+      const v = col.value(p);
+      ctx.fillText(col.max ? fitText(ctx, v, col.max) : String(v), col.x, cy);
+    });
   });
 
   ctx.textAlign = "left";
   ctx.fillStyle = C.muted;
   ctx.font = `22px ${FONT}`;
-  const note =
-    ranked.length > LIMIT
-      ? `積分相同並列同一名次。圖片只顯示前 ${LIMIT} 名，完整名單請匯出 Excel。`
-      : "積分相同並列同一名次";
-  ctx.fillText(note, pad, H - footH / 2);
+  const fullNote =
+    allRows.length > LIMIT ? `${note}。圖片只顯示前 ${LIMIT} 名，完整名單請匯出 Excel。` : note;
+  ctx.fillText(fullNote, pad, H - footH / 2);
 
   return cv.toDataURL("image/png");
+}
+
+export function buildRankingImage({ title, ranked, phoneOf }) {
+  const pad = 56;
+  return buildImage({
+    title,
+    subtitle: "Cash Game",
+    rows: ranked,
+    note: "積分相同並列同一名次",
+    columns: [
+      { label: "姓名", x: pad + 100, max: 284, font: "bold 32px", value: (p) => p.name },
+      { label: "手機號", x: 470, max: 210, color: C.muted, value: phoneOf },
+      { label: "最後更新", x: 700, font: "24px", color: C.muted, value: (p) => fmtDate(p.updatedAt) },
+      { label: "積分", x: 1080 - pad, align: "right", font: "bold 36px", value: (p) => fmt(p.points) },
+    ],
+  });
+}
+
+export function buildSngImage({ title, ranked, phoneOf }) {
+  const pad = 56;
+  return buildImage({
+    title,
+    subtitle: "Sit and Go",
+    rows: ranked,
+    note: "按第 1 名次數排名，相同時比較第 2 名、第 3 名次數",
+    columns: [
+      { label: "姓名", x: pad + 100, max: 300, font: "bold 32px", value: (p) => p.name },
+      { label: "手機號", x: 480, max: 220, color: C.muted, value: phoneOf },
+      { label: "第1名", x: 770, align: "center", font: "bold 36px", value: (p) => p.firsts },
+      { label: "第2名", x: 880, align: "center", font: "30px", value: (p) => p.seconds },
+      { label: "第3名", x: 990, align: "center", font: "30px", value: (p) => p.thirds },
+    ],
+  });
 }

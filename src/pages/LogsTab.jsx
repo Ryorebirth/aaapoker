@@ -24,14 +24,16 @@ const ACTIONS = {
   admin_create: "新增管理員",
   admin_delete: "刪除管理員",
   password_change: "修改密碼",
+  sng_result: "記錄賽果",
+  sng_delete: "刪除賽果",
 };
 
 const FILTERS = [
-  ["points", "積分相關"],
   ["all", "全部"],
-  ["admin", "帳號相關"],
+  ["cash", "Cash Game"],
+  ["sng", "Sit and Go"],
+  ["admin", "帳號"],
 ];
-const POINT_ACTIONS = ["create", "adjust", "edit", "delete", "import"];
 
 function describe(l) {
   const parts = [];
@@ -48,7 +50,7 @@ export default function LogsTab({ call, title }) {
   const [limit, setLimit] = useState(1000);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [filter, setFilter] = useState("points");
+  const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
 
   const load = useCallback(async () => {
@@ -71,9 +73,9 @@ export default function LogsTab({ call, title }) {
 
   const q = query.trim().toLowerCase();
   const shown = logs.filter((l) => {
-    const isPoint = POINT_ACTIONS.includes(l.action);
-    if (filter === "points" && !isPoint) return false;
-    if (filter === "admin" && isPoint) return false;
+    if (filter === "cash" && l.board !== "cash") return false;
+    if (filter === "sng" && l.board !== "sng") return false;
+    if (filter === "admin" && l.board) return false;
     if (!q) return true;
     return (
       (l.playerName || "").toLowerCase().includes(q) ||
@@ -86,10 +88,11 @@ export default function LogsTab({ call, title }) {
   const exportLogs = () =>
     downloadCSV(
       `${safeName(title)}_修改紀錄_${today()}.csv`,
-      ["時間", "管理員", "動作", "玩家", "手機號", "分數變化", "修改前積分", "修改後積分", "備註"],
+      ["時間", "管理員", "計分器", "動作", "玩家", "手機號", "分數變化", "修改前積分", "修改後積分", "備註"],
       shown.map((l) => [
         fmtDateTime(l.createdAt),
         l.adminUsername,
+        l.board === "cash" ? "Cash Game" : l.board === "sng" ? "Sit and Go" : "",
         ACTIONS[l.action] || l.action,
         l.playerName || "",
         l.playerPhone ? `="${l.playerPhone}"` : "",
@@ -109,7 +112,7 @@ export default function LogsTab({ call, title }) {
               修改紀錄
             </h2>
             <p className="text-xs" style={{ color: C.muted }}>
-              每次新增、加減分、修改和刪除都會記錄管理員和時間。顯示最近 {limit} 筆。
+              Cash Game 和 Sit and Go 的每次修改都會記錄管理員和時間。顯示最近 {limit} 筆。
             </p>
           </div>
           <div className="flex gap-2">
@@ -184,6 +187,14 @@ export default function LogsTab({ call, title }) {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-sm">
+                  {l.board && (
+                    <span
+                      className="inline-block mr-2 px-1.5 py-0.5 rounded text-xs font-semibold"
+                      style={{ background: l.board === "sng" ? "#F3EBD6" : C.tint, color: l.board === "sng" ? "#6B4E12" : C.felt }}
+                    >
+                      {l.board === "sng" ? "SnG" : "Cash"}
+                    </span>
+                  )}
                   <span className="font-semibold">{ACTIONS[l.action] || l.action}</span>
                   {l.playerName && <span className="ml-2">{l.playerName}</span>}
                   {l.playerPhone && (

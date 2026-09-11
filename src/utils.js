@@ -113,3 +113,25 @@ export const btnSecondary =
   "px-3 py-2 rounded-md text-sm font-medium border bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-emerald-700";
 export const btnRow =
   "px-2 py-1 rounded text-sm font-medium hover:bg-gray-100 disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-emerald-700";
+
+// Sit and Go: most 1st places first, then 2nd, then 3rd. Identical records share a rank.
+export function rankSng(standings) {
+  const sorted = [...standings].sort(
+    (a, b) =>
+      b.firsts - a.firsts ||
+      b.seconds - a.seconds ||
+      b.thirds - a.thirds ||
+      a.name.localeCompare(b.name, "zh-Hant")
+  );
+  let prev = null;
+  let prevRank = 0;
+  return sorted.map((p, i) => {
+    const key = `${p.firsts}-${p.seconds}-${p.thirds}`;
+    const rank = key === prev ? prevRank : i + 1;
+    prev = key;
+    prevRank = rank;
+    return { ...p, rank };
+  });
+}
+
+export const BOARD_NAMES = { cash: "Cash Game", sng: "Sit and Go" };

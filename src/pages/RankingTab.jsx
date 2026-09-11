@@ -75,7 +75,8 @@ export default function RankingTab({ players, setPlayers, title, loaded, call, r
     return () => window.removeEventListener("keydown", onKey);
   }, [imageUrl]);
 
-  const ranked = useMemo(() => rankPlayers(players), [players]);
+  const cashPlayers = useMemo(() => players.filter((p) => p.inCash), [players]);
+  const ranked = useMemo(() => rankPlayers(cashPlayers), [cashPlayers]);
   const q = query.trim().toLowerCase();
   const visible = q
     ? ranked.filter(
@@ -96,7 +97,11 @@ export default function RankingTab({ players, setPlayers, title, loaded, call, r
       const r = await call("/players", { method: "POST", body: form });
       upsertLocal(r.player);
       setForm({ name: "", phone: "", points: "" });
-      flash(`已新增 ${r.player.name}`);
+      flash(
+        r.joinedExisting
+          ? `${r.player.name} 已在 Sit and Go 登記，已加入 Cash Game`
+          : `已新增 ${r.player.name}`
+      );
       nameRef.current && nameRef.current.focus();
     } catch (e) {
       setFormError(e.message);
@@ -160,9 +165,14 @@ export default function RankingTab({ players, setPlayers, title, loaded, call, r
 
   const removePlayer = (p) =>
     runRow(async () => {
-      await call(`/players/${p.id}`, { method: "DELETE" });
-      setPlayers((ps) => ps.filter((x) => x.id !== p.id));
-      flash(`已刪除 ${p.name}`);
+      const r = await call(`/players/${p.id}`, { method: "DELETE" });
+      if (r.removedFromCashOnly) {
+        setPlayers((ps) => ps.map((x) => (x.id === p.id ? { ...x, inCash: false, points: 0 } : x)));
+        flash(`已從 Cash Game 移除 ${p.name}，Sit and Go 紀錄保留`);
+      } else {
+        setPlayers((ps) => ps.filter((x) => x.id !== p.id));
+        flash(`已刪除 ${p.name}`);
+      }
     });
 
   const importLegacy = async () => {
@@ -190,11 +200,11 @@ export default function RankingTab({ players, setPlayers, title, loaded, call, r
   };
 
   const phoneOut = (p) => (maskOn ? maskPhone(p.phone) : p.phone);
-  const empty = players.length === 0;
+  const empty = cashPlayers.length === 0;
 
   const exportCSV = () => {
     downloadCSV(
-      `${safeName(title)}_${today()}.csv`,
+      `${safeName(title)}_CashGame_${today()}.csv`,
       ["排名", "姓名", "手機號", "積分", "登記日期", "最後更新", "最後修改人"],
       ranked.map((p) => [
         p.rank,
@@ -211,7 +221,7 @@ export default function RankingTab({ players, setPlayers, title, loaded, call, r
 
   const copyRanking = async () => {
     const lines = [
-      `${title || DEFAULT_TITLE}（${today()}）`,
+      `${title || DEFAULT_TITLE} Cash Game（${today()}）`,
       ...ranked.map(
         (p) => `${p.rank}. ${p.name}（${phoneOut(p)}）${fmt(p.points)} 分　更新 ${fmtDate(p.updatedAt)}`
       ),
@@ -340,7 +350,7 @@ export default function RankingTab({ players, setPlayers, title, loaded, call, r
           <div className="p-4 border-b flex flex-col gap-3" style={{ borderColor: C.line }}>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 id="rank-heading" className="text-lg font-bold">
-                排名
+                Cash Game 排名
               </h2>
               <div className="flex flex-wrap gap-2">
                 <button
@@ -579,7 +589,7 @@ export default function RankingTab({ players, setPlayers, title, loaded, call, r
                           {open === "delete" && (
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="text-sm flex-1">
-                                刪除「{p.name}」？玩家會從排名移除，但修改紀錄會保留。
+                                刪除「{p.name}」？玩家會從 Cash Game 排名移除，修改紀錄和 Sit and Go 成績會保留。
                               </span>
                               <button
                                 className={btnPrimary}
@@ -649,7 +659,7 @@ export default function RankingTab({ players, setPlayers, title, loaded, call, r
               </button>
               <a
                 href={imageUrl}
-                download={`${safeName(title)}_${today()}.png`}
+                download={`${safeName(title)}_CashGame_${today()}.png`}
                 className={btnPrimary + " inline-block"}
                 style={{ background: C.felt }}
               >
