@@ -411,7 +411,8 @@ async function listSng(url: URL) {
   const games = await q(
     `SELECT g.id, g.title, g.created_by, g.created_at,
             COALESCE(
-              json_agg(json_build_object('place', r.place, 'playerId', p.id, 'name', p.name, 'phone', p.phone)
+              json_agg(json_build_object('place', r.place, 'playerId', p.id, 'name', p.name, 'phone', p.phone,
+                                         'reward', r.reward)
                        ORDER BY r.place) FILTER (WHERE r.place IS NOT NULL),
               '[]'
             ) AS results
@@ -441,19 +442,21 @@ async function createSngGame(req: Request, admin: Admin) {
   const body = await readJson(req);
   const title = String(body.title ?? "").trim().slice(0, 60) || null;
   const raw = Array.isArray(body.results) ? body.results : [];
-  const entries: { place: number; name: string; phone: string; phoneNormalized: string }[] = [];
+  const entries: { place: number; name: string; phone: string; phoneNormalized: string; reward: string | null }[] = [];
 
   for (const item of raw) {
     const place = Number((item as any)?.place);
     if (![1, 2, 3].includes(place)) throw new HttpError(400, "名次只可以是第 1、2 或 3 名");
     const name = String((item as any)?.name ?? "").trim();
     const phone = String((item as any)?.phone ?? "").trim();
-    if (!name && !phone) continue;
+    const reward = String((item as any)?.reward ?? "").trim();
+    if (!name && !phone && !reward) continue;
     const label = PLACE_LABEL[place];
     if (!name) throw new HttpError(400, `${label}：請輸入姓名`);
     if (name.length > 50) throw new HttpError(400, `${label}：姓名不可超過 50 個字`);
     if (!/^\+?[\d\s-]{6,20}$/.test(phone)) throw new HttpError(400, `${label}：手機號格式不正確`);
-    entries.push({ place, name, phone, phoneNormalized: normPhone(phone) });
+    if (reward.length > 100) throw new HttpError(400, `${label}：獎勵不可超過 100 個字`);
+    entries.push({ place, name, phone, phoneNormalized: normPhone(phone), reward: reward || null });
   }
 
   const places = entries.map((e) => e.place);
@@ -488,10 +491,11 @@ async function createSngGame(req: Request, admin: Admin) {
         note = `（手機號已登記為「${player.name}」，沿用登記姓名）`;
         notices.push(`${PLACE_LABEL[e.place]}的手機號已登記為「${player.name}」，已沿用登記姓名`);
       }
-      await query(`INSERT INTO sng_results (game_id, player_id, place) VALUES ($1, $2, $3)`, [
+      await query(`INSERT INTO sng_results (game_id, player_id, place, reward) VALUES ($1, $2, $3, $4)`, [
         game.id,
         player.id,
         e.place,
+        e.reward,
       ]);
       await log(query, {
         action: "sng_result",
@@ -500,9 +504,9 @@ async function createSngGame(req: Request, admin: Admin) {
         playerId: player.id,
         playerName: player.name,
         playerPhone: player.phone,
-        detail: `${gameLabel} ${PLACE_LABEL[e.place]}${note}`,
+        detail: `${gameLabel} ${PLACE_LABEL[e.place]}${e.reward ? `　獎勵：${e.reward}` : ""}${note}`,
       });
-      results.push({ place: e.place, playerId: player.id, name: player.name, phone: player.phone });
+      results.push({ place: e.place, playerId: player.id, name: player.name, phone: player.phone, reward: e.reward });
     }
     return {
       game: { id: game.id, title: game.title, createdBy: game.created_by, createdAt: game.created_at, results },
@@ -512,12 +516,46 @@ async function createSngGame(req: Request, admin: Admin) {
   return json(result, 201);
 }
 
+async function updateSngReward(req: Request, admin: Admin, gameId: number, place: number) {
+  if (![1, 2, 3].includes(place)) throw new HttpError(404, "找不到這個名次");
+  const body = await readJson(req);
+  const reward = String(body.reward ?? "").trim();
+  if (reward.length > 100) throw new HttpError(400, "獎勵不可超過 100 個字");
+  const result = await tx(async (query) => {
+    const [row] = await query(
+      `SELECT r.reward, g.id AS game_id, g.title, p.id AS player_id, p.name, p.phone
+         FROM sng_results r
+         JOIN sng_games g ON g.id = r.game_id
+         JOIN players p ON p.id = r.player_id
+        WHERE r.game_id = $1 AND r.place = $2
+        FOR UPDATE OF r`,
+      [gameId, place]
+    );
+    if (!row) throw new HttpError(404, "找不到這個名次的賽果，可能已被刪除");
+    const next = reward || null;
+    if ((row.reward ?? null) === next) return { reward: next };
+    await query(`UPDATE sng_results SET reward = $1 WHERE game_id = $2 AND place = $3`, [next, gameId, place]);
+    const gameLabel = row.title || `第 ${row.game_id} 場`;
+    await log(query, {
+      action: "sng_reward",
+      board: "sng",
+      admin: admin.username,
+      playerId: row.player_id,
+      playerName: row.name,
+      playerPhone: row.phone,
+      detail: `${gameLabel} ${PLACE_LABEL[place]} 獎勵：${row.reward || "（未填）"} → ${next || "（未填）"}`,
+    });
+    return { reward: next };
+  });
+  return json(result);
+}
+
 async function deleteSngGame(admin: Admin, id: number) {
   await tx(async (query) => {
     const [game] = await query(`SELECT * FROM sng_games WHERE id = $1 FOR UPDATE`, [id]);
     if (!game) throw new HttpError(404, "找不到這場賽果，可能已被刪除");
     const results = await query(
-      `SELECT r.place, p.id, p.name, p.phone FROM sng_results r JOIN players p ON p.id = r.player_id
+      `SELECT r.place, r.reward, p.id, p.name, p.phone FROM sng_results r JOIN players p ON p.id = r.player_id
         WHERE r.game_id = $1 ORDER BY r.place`,
       [id]
     );
@@ -531,7 +569,7 @@ async function deleteSngGame(admin: Admin, id: number) {
         playerId: r.id,
         playerName: r.name,
         playerPhone: r.phone,
-        detail: `刪除 ${gameLabel} ${PLACE_LABEL[r.place]}`,
+        detail: `刪除 ${gameLabel} ${PLACE_LABEL[r.place]}${r.reward ? `（獎勵：${r.reward}）` : ""}`,
       });
     }
     // Remove players who were only in this Sit and Go and have no other records
@@ -758,6 +796,9 @@ export default async (req: Request, _context: Context) => {
     if (seg[0] === "sng") {
       if (path === "/sng" && method === "GET") return await listSng(url);
       if (path === "/sng/games" && method === "POST") return await createSngGame(req, admin);
+      if (seg.length === 5 && seg[1] === "games" && seg[3] === "results" && method === "PATCH") {
+        return await updateSngReward(req, admin, validId(seg[2]), Number(seg[4]));
+      }
       if (seg.length === 3 && seg[1] === "games" && method === "DELETE") {
         return await deleteSngGame(admin, validId(seg[2]));
       }

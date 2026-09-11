@@ -26,6 +26,7 @@ const ACTIONS = {
   password_change: "修改密碼",
   sng_result: "記錄賽果",
   sng_delete: "刪除賽果",
+  sng_reward: "修改獎勵",
 };
 
 const FILTERS = [

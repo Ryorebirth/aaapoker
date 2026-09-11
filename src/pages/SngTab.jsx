@@ -23,7 +23,8 @@ import {
 
 const MASK_KEY = "poker-ranking:mask-export";
 const PLACES = [1, 2, 3];
-const emptyForm = () => ({ title: "", 1: { name: "", phone: "" }, 2: { name: "", phone: "" }, 3: { name: "", phone: "" } });
+const emptyEntry = () => ({ name: "", phone: "", reward: "" });
+const emptyForm = () => ({ title: "", 1: emptyEntry(), 2: emptyEntry(), 3: emptyEntry() });
 
 function readMask() {
   try {
@@ -43,6 +44,9 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
   const [editError, setEditError] = useState("");
   const [editBusy, setEditBusy] = useState(false);
   const [confirmGame, setConfirmGame] = useState(null);
+  const [rewardEdit, setRewardEdit] = useState(null);
+  const [rewardError, setRewardError] = useState("");
+  const [rewardBusy, setRewardBusy] = useState(false);
   const [imageUrl, setImageUrl] = useState(null);
 
   useEffect(() => {
@@ -122,6 +126,25 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
     }
   };
 
+  const saveReward = async () => {
+    if (rewardBusy) return;
+    setRewardBusy(true);
+    setRewardError("");
+    try {
+      await call(`/sng/games/${rewardEdit.gameId}/results/${rewardEdit.place}`, {
+        method: "PATCH",
+        body: { reward: rewardEdit.value },
+      });
+      setRewardEdit(null);
+      await refresh();
+      flash("已更新獎勵");
+    } catch (e) {
+      setRewardError(e.message);
+    } finally {
+      setRewardBusy(false);
+    }
+  };
+
   const deleteGame = async (g) => {
     try {
       await call(`/sng/games/${g.id}`, { method: "DELETE" });
@@ -155,12 +178,29 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
     const name = (g, place) => g.results.find((r) => r.place === place);
     downloadCSV(
       `${safeName(title)}_SitAndGo賽果_${today()}.csv`,
-      ["日期", "場次", "第1名", "第1名手機號", "第2名", "第2名手機號", "第3名", "第3名手機號", "記錄人"],
+      [
+        "日期",
+        "場次",
+        "第1名",
+        "第1名手機號",
+        "第1名獎勵",
+        "第2名",
+        "第2名手機號",
+        "第2名獎勵",
+        "第3名",
+        "第3名手機號",
+        "第3名獎勵",
+        "記錄人",
+      ],
       sng.games.map((g) => {
         const cells = [fmtDateTime(g.createdAt), g.title || `第 ${g.id} 場`];
         PLACES.forEach((place) => {
           const r = name(g, place);
-          cells.push(r ? r.name : "", r ? `="${maskOn ? maskPhone(r.phone) : r.phone}"` : "");
+          cells.push(
+            r ? r.name : "",
+            r ? `="${maskOn ? maskPhone(r.phone) : r.phone}"` : "",
+            r ? r.reward || "" : ""
+          );
         });
         cells.push(g.createdBy);
         return cells;
@@ -288,6 +328,22 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
                         </p>
                       )}
                     </div>
+                    <div>
+                      <label htmlFor={`sng-r-${place}`} className="block text-xs font-medium mb-1">
+                        獎勵（選填）
+                      </label>
+                      <input
+                        id={`sng-r-${place}`}
+                        className={inputCls}
+                        style={{ borderColor: C.line }}
+                        value={entry.reward}
+                        maxLength={100}
+                        autoComplete="off"
+                        placeholder="例如：$500 或 免費入場券"
+                        onChange={(e) => setPlace(place, { reward: e.target.value })}
+                        onKeyDown={(e) => isEnter(e) && saveGame()}
+                      />
+                    </div>
                   </div>
                 </fieldset>
               );
@@ -308,7 +364,7 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
             {saving ? "儲存中…" : "儲存賽果"}
           </button>
           <p className="text-xs mt-3 leading-relaxed" style={{ color: C.muted }}>
-            同一個手機號會被視為同一位玩家，Cash Game 和 Sit and Go 共用玩家資料。
+            同一個手機號會被視為同一位玩家，Cash Game 和 Sit and Go 共用玩家資料。獎勵只在後台顯示，不會出現在即時排行榜。
           </p>
         </section>
 
@@ -539,22 +595,86 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
                         {g.createdBy}
                       </div>
                     </div>
-                    <ol className="flex-1 flex flex-col gap-1" style={{ minWidth: 180 }}>
-                      {g.results.map((r) => (
-                        <li key={r.place} className="flex items-center gap-2 text-sm">
-                          <span
-                            className="inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold text-white shrink-0"
-                            style={{ background: CHIP[r.place] }}
-                            aria-label={`第 ${r.place} 名`}
-                          >
-                            {r.place}
-                          </span>
-                          <span className="font-medium">{r.name}</span>
-                          <span className="tabular-nums" style={{ color: C.muted }}>
-                            {r.phone}
-                          </span>
-                        </li>
-                      ))}
+                    <ol className="flex-1 flex flex-col gap-2" style={{ minWidth: 220 }}>
+                      {g.results.map((r) => {
+                        const isEditing =
+                          rewardEdit && rewardEdit.gameId === g.id && rewardEdit.place === r.place;
+                        return (
+                          <li key={r.place} className="text-sm">
+                            <div className="flex flex-wrap items-center gap-x-2">
+                              <span
+                                className="inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold text-white shrink-0"
+                                style={{ background: CHIP[r.place] }}
+                                aria-label={`第 ${r.place} 名`}
+                              >
+                                {r.place}
+                              </span>
+                              <span className="font-medium">{r.name}</span>
+                              <span className="tabular-nums" style={{ color: C.muted }}>
+                                {r.phone}
+                              </span>
+                            </div>
+                            {isEditing ? (
+                              <div className="mt-1 flex flex-wrap items-center gap-2" style={{ paddingLeft: 32 }}>
+                                <label htmlFor={`rw-${g.id}-${r.place}`} className="sr-only">
+                                  第 {r.place} 名獎勵
+                                </label>
+                                <input
+                                  id={`rw-${g.id}-${r.place}`}
+                                  autoFocus
+                                  className={inputCls}
+                                  style={{ borderColor: C.line, maxWidth: 220 }}
+                                  value={rewardEdit.value}
+                                  maxLength={100}
+                                  placeholder="例如：$500"
+                                  onChange={(e) => setRewardEdit({ ...rewardEdit, value: e.target.value })}
+                                  onKeyDown={(e) => {
+                                    if (isEnter(e)) saveReward();
+                                    if (e.key === "Escape") setRewardEdit(null);
+                                  }}
+                                />
+                                <button
+                                  className={btnPrimary}
+                                  style={{ background: C.felt }}
+                                  onClick={saveReward}
+                                  disabled={rewardBusy}
+                                >
+                                  儲存
+                                </button>
+                                <button
+                                  className={btnSecondary}
+                                  style={{ borderColor: C.line, color: C.ink }}
+                                  onClick={() => setRewardEdit(null)}
+                                >
+                                  取消
+                                </button>
+                                {rewardError && (
+                                  <span className="w-full text-sm" style={{ color: C.red }} role="alert">
+                                    {rewardError}
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="flex flex-wrap items-center gap-x-2" style={{ paddingLeft: 32 }}>
+                                <span style={{ color: r.reward ? C.ink : C.muted }}>
+                                  獎勵：{r.reward || "未填"}
+                                </span>
+                                <button
+                                  className="px-1 rounded text-sm underline focus:outline-none focus:ring-2 focus:ring-emerald-700"
+                                  style={{ color: C.felt }}
+                                  onClick={() => {
+                                    setRewardError("");
+                                    setRewardEdit({ gameId: g.id, place: r.place, value: r.reward || "" });
+                                  }}
+                                  aria-label={`修改 ${r.name} 的獎勵`}
+                                >
+                                  修改
+                                </button>
+                              </div>
+                            )}
+                          </li>
+                        );
+                      })}
                     </ol>
                     {confirmGame === g.id ? (
                       <div className="flex items-center gap-2">
