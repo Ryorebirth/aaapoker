@@ -6,9 +6,61 @@
     <meta name="theme-color" content="#1E4A3B" />
     <title>扑克积分排行榜</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>♠</text></svg>" />
+    <style>
+      html, body { margin: 0; background: #143A2F; }
+      #boot-error {
+        display: none;
+        position: fixed;
+        left: 0; right: 0; top: 0; bottom: 0;
+        padding: 6vh 6vw;
+        background: #143A2F;
+        color: #fff;
+        font-family: system-ui, sans-serif;
+        font-size: 18px;
+        line-height: 1.7;
+        overflow: auto;
+        z-index: 9999;
+      }
+      #boot-error b { color: #C9A24A; font-size: 22px; }
+      #boot-error small { color: rgba(255,255,255,0.6); word-break: break-all; }
+    </style>
   </head>
   <body>
     <div id="root"></div>
+
+    <div id="boot-error">
+      <b>画面无法显示</b>
+      <p id="boot-error-msg"></p>
+      <small id="boot-error-ua"></small>
+    </div>
+
+    <!-- Plain ES5: runs even on very old TV browsers that cannot parse the main bundle -->
+    <script>
+      (function () {
+        var shown = false;
+        function show(msg) {
+          if (shown) return;
+          shown = true;
+          var box = document.getElementById("boot-error");
+          document.getElementById("boot-error-msg").textContent = msg;
+          document.getElementById("boot-error-ua").textContent = "浏览器：" + navigator.userAgent;
+          box.style.display = "block";
+        }
+        window.addEventListener("error", function (e) {
+          if (e && e.message) show(e.message + (e.filename ? "\n" + e.filename + ":" + e.lineno : ""));
+        });
+        window.addEventListener("unhandledrejection", function (e) {
+          show("Promise: " + ((e && e.reason && (e.reason.message || e.reason)) || "unknown"));
+        });
+        setTimeout(function () {
+          var root = document.getElementById("root");
+          if (!root || !root.firstChild) {
+            show("浏览器版本太旧，无法执行这个页面。请改用电视上较新的浏览器，或用手机、平板查看。");
+          }
+        }, 12000);
+      })();
+    </script>
+
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

@@ -33,6 +33,13 @@ npx netlify deploy --build --prod
 - `netlify/functions/api.mts` 所有 API（路径 `/api/*`）
 - `netlify/database/migrations/` 资料表结构，部署时自动套用
 
+## 浏览器兼容
+网站会同时输出一个 ES5 版本，旧版浏览器（例如小米电视内建浏览器、Android TV WebView）会自动载入该版本。
+
+## 旧版电视浏览器支援
+建置时会同时产生一份给旧版浏览器使用的程式码（`@vitejs/plugin-legacy`），支援到 Chrome 49 / Android 5，
+所以小米电视等旧装置也能开启 `/board`。如果浏览器实在太旧，画面会显示原因和浏览器版本，而不是一片空白。
+
 ## 语言
 介面为简体中文。玩家姓名等使用者输入的资料不会自动转换。
 
