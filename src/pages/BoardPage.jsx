@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api.js";
 import RankMark from "../RankMark.jsx";
 import {
@@ -20,6 +20,12 @@ const VIEWS = [
   ["sng", "Sit and Go"],
   ["rotate", "轮流显示"],
 ];
+
+// Below this many players the top 3 get the large treatment; above it every row is uniform
+const BIG_ROW_LIMIT = 6;
+// Two columns once the list gets long, so twice as many players fit on screen
+const TWO_COLUMN_FROM = 9;
+const MIN_SCALE = 0.4;
 
 function readView() {
   const v = new URLSearchParams(window.location.search).get("show");
@@ -80,87 +86,87 @@ const sngDiff = (o, p) => {
   return gained.length || move !== 0 ? { isNew: false, gained, move, highlight: gained.length > 0 } : null;
 };
 
-function ChangeBadge({ change }) {
+function ChangeBadge({ change, big }) {
   if (!change) return null;
   return (
-    <div className="flex flex-col items-end text-sm font-semibold tabular-nums whitespace-nowrap">
-      {change.isNew && <span style={{ color: "#E9CF8E" }}>新加入</span>}
+    <div
+      className={`${big ? "text-sm" : "text-xs"} font-semibold tabular-nums whitespace-nowrap text-right ml-2`}
+    >
+      {change.isNew && <div style={{ color: "#E9CF8E" }}>新加入</div>}
       {!change.isNew && change.delta !== undefined && change.delta !== 0 && (
-        <span style={{ color: change.delta > 0 ? C.up : C.down }}>{signed(change.delta)}</span>
+        <div style={{ color: change.delta > 0 ? C.up : C.down }}>{signed(change.delta)}</div>
       )}
       {!change.isNew &&
         change.gained &&
         change.gained.map((g) => (
-          <span key={g} style={{ color: C.up }}>
+          <div key={g} style={{ color: C.up }}>
             {g}
-          </span>
+          </div>
         ))}
       {!change.isNew && change.move !== 0 && (
-        <span style={{ color: change.move > 0 ? C.up : C.down }}>
+        <div style={{ color: change.move > 0 ? C.up : C.down }}>
           {change.move > 0 ? `▲${change.move}` : `▼${-change.move}`}
-        </span>
+        </div>
       )}
     </div>
   );
 }
 
+/*
+ * Spacing uses margins instead of flex `gap`, because the browser built into
+ * older TVs does not support gap in flexbox and would render everything squashed.
+ */
 function Row({ p, big, change, children }) {
   const highlight = change && (change.isNew || change.highlight);
   return (
     <li
-      className={`flex items-center gap-3 sm:gap-4 rounded-lg px-3 sm:px-5 ${big ? "py-4" : "py-2"} transition-colors duration-700`}
+      className={`flex items-center rounded-lg ${big ? "px-4 py-3" : "px-3 py-2"} mb-2 transition-colors duration-700`}
       style={{ background: highlight ? "rgba(201,162,74,0.30)" : "rgba(255,255,255,0.06)" }}
     >
-      <RankMark rank={p.rank} size={big ? "lg" : "md"} dark />
+      <div className={big ? "mr-4" : "mr-3"}>
+        <RankMark rank={p.rank} size={big ? "lg" : "md"} dark />
+      </div>
       <div className="flex-1 min-w-0">
-        <div className={`${big ? "text-2xl sm:text-3xl" : "text-lg sm:text-xl"} font-bold text-white truncate`}>
+        <div className={`${big ? "text-3xl" : "text-xl"} font-bold text-white truncate leading-tight`}>
           {p.name}
         </div>
-        <div className="text-xs sm:text-sm tabular-nums" style={{ color: "rgba(255,255,255,0.55)" }}>
+        <div className="text-sm tabular-nums truncate" style={{ color: "rgba(255,255,255,0.55)" }}>
           {p.phoneMasked}
         </div>
       </div>
-      <ChangeBadge change={change} />
+      <ChangeBadge change={change} big={big} />
       {children}
     </li>
   );
 }
 
-function Split({ ranked, renderRow }) {
-  const top = ranked.filter((p) => p.rank <= 3);
-  const rest = ranked.filter((p) => p.rank > 3);
+function CashRow({ p, big, change }) {
   return (
-    <>
-      <ol className="flex flex-col gap-2 mb-2">{top.map((p) => renderRow(p, true))}</ol>
-      {rest.length > 0 && <ol className="flex flex-col gap-2">{rest.map((p) => renderRow(p, false))}</ol>}
-    </>
-  );
-}
-
-function CashList({ ranked, changes }) {
-  const renderRow = (p, big) => (
-    <Row key={p.id} p={p} big={big} change={changes[p.id]}>
+    <Row p={p} big={big} change={change}>
       <div
-        className={`${big ? "text-3xl sm:text-5xl" : "text-2xl sm:text-3xl"} font-bold tabular-nums text-white whitespace-nowrap`}
+        className={`${big ? "text-5xl" : "text-3xl"} font-bold tabular-nums text-white whitespace-nowrap ml-4 leading-none`}
       >
         {fmt(p.points)}
       </div>
     </Row>
   );
-  return <Split ranked={ranked} renderRow={renderRow} />;
 }
 
-function SngList({ ranked, changes }) {
-  const renderRow = (p, big) => (
-    <Row key={p.id} p={p} big={big} change={changes[p.id]}>
-      <div className="flex items-end gap-3 sm:gap-5 tabular-nums">
-        {[
-          ["第1名", p.firsts, big ? "text-3xl sm:text-5xl" : "text-2xl sm:text-3xl"],
-          ["第2名", p.seconds, big ? "text-2xl sm:text-3xl" : "text-xl sm:text-2xl"],
-          ["第3名", p.thirds, big ? "text-2xl sm:text-3xl" : "text-xl sm:text-2xl"],
-        ].map(([label, n, size]) => (
-          <div key={label} className="text-center" style={{ minWidth: big ? 52 : 44 }}>
-            <div className={`${size} font-bold`} style={{ color: n ? "#fff" : "rgba(255,255,255,0.45)" }}>
+function SngRow({ p, big, change }) {
+  const stats = [
+    ["第1名", p.firsts],
+    ["第2名", p.seconds],
+    ["第3名", p.thirds],
+  ];
+  return (
+    <Row p={p} big={big} change={change}>
+      <div className="flex items-end tabular-nums ml-3">
+        {stats.map(([label, n], i) => (
+          <div key={label} className={i ? "text-center ml-3" : "text-center"} style={{ minWidth: big ? 54 : 44 }}>
+            <div
+              className={`${big ? "text-4xl" : "text-2xl"} font-bold leading-none`}
+              style={{ color: n ? "#fff" : "rgba(255,255,255,0.45)" }}
+            >
               {n}
             </div>
             <div className="text-xs" style={{ color: "rgba(255,255,255,0.55)" }}>
@@ -171,7 +177,69 @@ function SngList({ ranked, changes }) {
       </div>
     </Row>
   );
-  return <Split ranked={ranked} renderRow={renderRow} />;
+}
+
+/** Splits the list into one or two columns and shrinks it until everything fits the screen. */
+function AutoFitList({ ranked, changes, RowComponent, signature }) {
+  const wrapRef = useRef(null);
+  const innerRef = useRef(null);
+  const [scale, setScale] = useState(1);
+
+  const fit = useCallback(() => {
+    const wrap = wrapRef.current;
+    const inner = innerRef.current;
+    if (!wrap || !inner) return;
+    const available = window.innerHeight - wrap.getBoundingClientRect().top - 40;
+    const natural = inner.scrollHeight;
+    if (available <= 0 || natural <= 0) return;
+    const next = Math.min(1, Math.max(MIN_SCALE, available / natural));
+    setScale((prev) => (Math.abs(prev - next) > 0.01 ? next : prev));
+  }, []);
+
+  useLayoutEffect(() => {
+    setScale(1);
+  }, [signature]);
+
+  useLayoutEffect(() => {
+    fit();
+  });
+
+  useEffect(() => {
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, [fit]);
+
+  const twoColumns = ranked.length >= TWO_COLUMN_FROM;
+  const big = ranked.length <= BIG_ROW_LIMIT;
+  const half = Math.ceil(ranked.length / 2);
+  const columns = twoColumns ? [ranked.slice(0, half), ranked.slice(half)] : [ranked];
+
+  return (
+    <div ref={wrapRef} style={{ overflow: "hidden" }}>
+      <div
+        ref={innerRef}
+        style={{
+          transform: `scale(${scale})`,
+          transformOrigin: "top left",
+          width: `${100 / scale}%`,
+        }}
+      >
+        <div className={twoColumns ? "flex" : ""}>
+          {columns.map((col, i) => (
+            <ol
+              key={i}
+              className={twoColumns ? "flex-1 min-w-0" : ""}
+              style={twoColumns && i === 0 ? { marginRight: 16 } : undefined}
+            >
+              {col.map((p) => (
+                <RowComponent key={p.id} p={p} big={big && !twoColumns} change={changes[p.id]} />
+              ))}
+            </ol>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function BoardPage() {
@@ -253,41 +321,43 @@ export default function BoardPage() {
   };
 
   const boardBtn =
-    "px-3 py-2 rounded-md text-sm font-medium border hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-yellow-600";
+    "px-3 py-1 rounded-md text-sm font-medium border hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-yellow-600";
 
   return (
-    <div ref={rootRef} className="min-h-screen overflow-auto" style={{ background: C.feltDeep, fontFamily: FONT }}>
-      <div className="max-w-4xl mx-auto px-4 sm:px-8 py-6 sm:py-10">
-        <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
+    <div
+      ref={rootRef}
+      className="min-h-screen overflow-hidden"
+      style={{ background: C.feltDeep, fontFamily: FONT }}
+    >
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4">
+        <div className="flex items-start justify-between mb-3">
           <div className="min-w-0">
-            <div className="text-sm mb-2" style={{ color: C.brass, letterSpacing: "0.35em" }} aria-hidden="true">
-              ♠ ♥ ♦ ♣
-            </div>
-            <div className="text-lg sm:text-2xl font-bold" style={{ color: C.brass }}>
+            <div className="text-base sm:text-lg font-bold leading-tight" style={{ color: C.brass }}>
               {BOARD_NAMES[active]}
             </div>
-            <h1 className="text-3xl sm:text-5xl font-bold text-white break-words">{data.title || DEFAULT_TITLE}</h1>
-            <div
-              className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-3 text-sm"
-              style={{ color: "rgba(255,255,255,0.7)" }}
-            >
-              <span className="flex items-center gap-2" aria-live="polite">
+            <h1 className="text-2xl sm:text-4xl font-bold text-white leading-tight truncate">
+              {data.title || DEFAULT_TITLE}
+            </h1>
+            <div className="text-xs sm:text-sm mt-1" style={{ color: "rgba(255,255,255,0.7)" }}>
+              <span className="inline-flex items-center mr-4" aria-live="polite">
                 <span
-                  className={`inline-block w-2 h-2 rounded-full ${syncOk ? "motion-safe:animate-pulse" : ""}`}
+                  className={`inline-block w-2 h-2 rounded-full mr-2 ${syncOk ? "motion-safe:animate-pulse" : ""}`}
                   style={{ background: syncOk ? C.up : C.down }}
                 />
                 {syncOk ? "即时更新中" : "连线中断，正在重试"}
               </span>
-              <span>{ranked.length} 位玩家</span>
-              {isSng && <span>共 {data.totalGames} 场</span>}
-              <span>最后更新 {fmtDateTime(lastUpdate || null)}</span>
+              <span className="mr-4">{ranked.length} 位玩家</span>
+              {isSng && <span className="mr-4">共 {data.totalGames} 场</span>}
+              <span className="mr-4">最后更新 {fmtDateTime(lastUpdate || null)}</span>
             </div>
           </div>
-          <div className="flex flex-col items-end gap-3">
-            <div className="text-3xl sm:text-4xl font-bold tabular-nums text-white">{fmtClock(now)}</div>
-            <div className="flex gap-2">
+          <div className="text-right shrink-0 ml-4">
+            <div className="text-2xl sm:text-3xl font-bold tabular-nums text-white leading-none">
+              {fmtClock(now)}
+            </div>
+            <div className="mt-2">
               <button
-                className={boardBtn}
+                className={boardBtn + " mr-2"}
                 style={{ borderColor: "rgba(255,255,255,0.35)", color: "#fff" }}
                 onClick={goFullscreen}
               >
@@ -301,7 +371,7 @@ export default function BoardPage() {
         </div>
 
         <div
-          className="inline-flex rounded-md overflow-hidden border mb-6"
+          className="inline-flex rounded-md overflow-hidden border mb-3"
           style={{ borderColor: "rgba(255,255,255,0.25)" }}
           role="group"
           aria-label="选择排行榜"
@@ -311,7 +381,7 @@ export default function BoardPage() {
               key={key}
               onClick={() => chooseView(key)}
               aria-pressed={view === key}
-              className="px-3 sm:px-4 py-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-yellow-600"
+              className="px-3 py-1 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-yellow-600"
               style={{
                 background: view === key ? C.brass : "transparent",
                 color: view === key ? C.ink : "rgba(255,255,255,0.8)",
@@ -335,17 +405,14 @@ export default function BoardPage() {
                 : "管理员新增玩家后，这里会即时显示积分。"}
             </p>
           </div>
-        ) : isSng ? (
-          <SngList ranked={sngRanked} changes={sngChanges} />
         ) : (
-          <CashList ranked={cashRanked} changes={cashChanges} />
+          <AutoFitList
+            ranked={ranked}
+            changes={isSng ? sngChanges : cashChanges}
+            RowComponent={isSng ? SngRow : CashRow}
+            signature={`${active}-${ranked.length}`}
+          />
         )}
-
-        <p className="text-xs mt-6" style={{ color: "rgba(255,255,255,0.5)" }}>
-          {isSng ? "按第 1 名次数排名，相同时比较第 2 名、第 3 名次数。" : "积分相同并列同一名次。"}
-          这个页面公开浏览，手机号已遮盖。
-          {view === "rotate" && `每 ${ROTATE_SECONDS} 秒切换一次。`}
-        </p>
       </div>
       {notice && (
         <div
