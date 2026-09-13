@@ -37,7 +37,7 @@ export default function RewardsTab({ data, loaded, title, call, refresh, flash }
       const r = await call("/rewards/use", { method: "POST", body: { playerId: holder.playerId, reward } });
       setLastUse({ key, ...r });
       await refresh();
-      flash(`${r.name} 已使用 1 個「${reward}」，尚餘 ${r.left} 個`);
+      flash(`${r.name} 已使用 1 个「${reward}」，尚余 ${r.left} 个`);
     } catch (e) {
       flash(e.message);
       refresh();
@@ -66,17 +66,17 @@ export default function RewardsTab({ data, loaded, title, call, refresh, flash }
       )
     );
     downloadCSV(
-      `${safeName(title)}_獎勵紀錄表_${today()}.csv`,
-      ["獎勵", "姓名", "手機號", "未使用", "已使用", "最近獲得"],
+      `${safeName(title)}_奖励纪录表_${today()}.csv`,
+      ["奖励", "姓名", "手机号", "未使用", "已使用", "最近获得"],
       rows
     );
-    flash("已匯出獎勵紀錄表");
+    flash("已汇出奖励纪录表");
   };
 
   const exportHistory = () => {
     downloadCSV(
-      `${safeName(title)}_獎勵使用紀錄_${today()}.csv`,
-      ["使用時間", "獎勵", "姓名", "手機號", "來自場次", "名次", "處理管理員"],
+      `${safeName(title)}_奖励使用纪录_${today()}.csv`,
+      ["使用时间", "奖励", "姓名", "手机号", "来自场次", "名次", "处理管理员"],
       history.map((h) => [
         fmtDateTime(h.usedAt),
         h.reward,
@@ -87,13 +87,13 @@ export default function RewardsTab({ data, loaded, title, call, refresh, flash }
         h.usedBy || "",
       ])
     );
-    flash("已匯出使用紀錄");
+    flash("已汇出使用纪录");
   };
 
   if (!loaded) {
     return (
       <p className="p-10 text-center text-sm" style={{ color: C.muted }}>
-        載入中…
+        载入中…
       </p>
     );
   }
@@ -104,10 +104,10 @@ export default function RewardsTab({ data, loaded, title, call, refresh, flash }
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 id="rw-head" className="text-lg font-bold">
-              獎勵紀錄表
+              奖励纪录表
             </h2>
             <p className="text-xs" style={{ color: C.muted }}>
-              Sit and Go 獲得的獎勵會自動記錄在這裡。玩家使用獎勵時按「使用 1 個」即時減除，按錯可以復原。
+              Sit and Go 获得的奖励会自动记录在这里。玩家使用奖励时按「使用 1 个」即时减除，按错可以复原。
             </p>
           </div>
           <button
@@ -116,7 +116,7 @@ export default function RewardsTab({ data, loaded, title, call, refresh, flash }
             onClick={exportLedger}
             disabled={!rewards.some((r) => r.holders.length)}
           >
-            匯出紀錄表
+            汇出纪录表
           </button>
         </div>
         <div className="grid gap-3 sm:grid-cols-3 mt-4">
@@ -130,7 +130,7 @@ export default function RewardsTab({ data, loaded, title, call, refresh, flash }
               <div className="flex items-baseline gap-3 mt-1 tabular-nums">
                 <span className="text-2xl font-bold">{rw.available}</span>
                 <span className="text-sm" style={{ color: C.muted }}>
-                  個未使用
+                  个未使用
                 </span>
                 <span className="text-sm ml-auto" style={{ color: C.muted }}>
                   已使用 {rw.used}
@@ -145,8 +145,8 @@ export default function RewardsTab({ data, loaded, title, call, refresh, flash }
             style={{ borderColor: C.line, minWidth: 180 }}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="搜尋姓名或手機號"
-            aria-label="搜尋獎勵持有人"
+            placeholder="搜寻姓名或手机号"
+            aria-label="搜寻奖励持有人"
           />
           <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
             <input
@@ -155,7 +155,7 @@ export default function RewardsTab({ data, loaded, title, call, refresh, flash }
               checked={showEmpty}
               onChange={(e) => setShowEmpty(e.target.checked)}
             />
-            顯示已用完的玩家
+            显示已用完的玩家
           </label>
         </div>
       </section>
@@ -180,7 +180,7 @@ export default function RewardsTab({ data, loaded, title, call, refresh, flash }
               </div>
               {!list.length ? (
                 <p className="p-6 text-center text-sm" style={{ color: C.muted }}>
-                  {q ? "沒有符合的玩家" : "目前沒有人持有"}
+                  {q ? "没有符合的玩家" : "目前没有人持有"}
                 </p>
               ) : (
                 <ul>
@@ -196,14 +196,14 @@ export default function RewardsTab({ data, loaded, title, call, refresh, flash }
                               {h.phone}
                             </div>
                             <div className="text-xs" style={{ color: C.muted }}>
-                              已使用 {h.used}　最近獲得 {fmtDate(h.lastWonAt)}
+                              已使用 {h.used}　最近获得 {fmtDate(h.lastWonAt)}
                             </div>
                           </div>
                           <div className="text-right tabular-nums">
                             <div
                               className="text-2xl font-bold"
                               style={{ color: h.available ? C.ink : "#9AA39F" }}
-                              aria-label={`未使用 ${h.available} 個`}
+                              aria-label={`未使用 ${h.available} 个`}
                             >
                               {h.available}
                             </div>
@@ -215,12 +215,12 @@ export default function RewardsTab({ data, loaded, title, call, refresh, flash }
                         <div className="flex flex-wrap items-center justify-end gap-2 mt-2">
                           {justUsed && (
                             <span className="text-xs mr-auto" style={{ color: C.felt }} role="status">
-                              已減除 1 個
+                              已减除 1 个
                               <button
                                 className="ml-2 underline font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-700 rounded"
                                 onClick={() => undo(lastUse.gameId, lastUse.place)}
                               >
-                                復原
+                                复原
                               </button>
                             </span>
                           )}
@@ -229,9 +229,9 @@ export default function RewardsTab({ data, loaded, title, call, refresh, flash }
                             style={{ background: C.red }}
                             onClick={() => deductOne(rw.reward, h)}
                             disabled={!h.available || busyKey === key}
-                            aria-label={`${h.name} 使用 1 個${rw.reward}`}
+                            aria-label={`${h.name} 使用 1 个${rw.reward}`}
                           >
-                            {busyKey === key ? "處理中…" : "使用 1 個"}
+                            {busyKey === key ? "处理中…" : "使用 1 个"}
                           </button>
                         </div>
                       </li>
@@ -248,10 +248,10 @@ export default function RewardsTab({ data, loaded, title, call, refresh, flash }
         <div className="p-4 border-b flex flex-wrap items-center justify-between gap-2" style={{ borderColor: C.line }}>
           <div>
             <h2 id="rw-history" className="text-lg font-bold">
-              使用紀錄
+              使用纪录
             </h2>
             <p className="text-xs" style={{ color: C.muted }}>
-              最近 300 次。系統會先扣除玩家最早獲得的同類獎勵。
+              最近 300 次。系统会先扣除玩家最早获得的同类奖励。
             </p>
           </div>
           <button
@@ -260,12 +260,12 @@ export default function RewardsTab({ data, loaded, title, call, refresh, flash }
             onClick={exportHistory}
             disabled={!history.length}
           >
-            匯出使用紀錄
+            汇出使用纪录
           </button>
         </div>
         {!history.length ? (
           <p className="p-8 text-center text-sm" style={{ color: C.muted }}>
-            還沒有人使用獎勵
+            还没有人使用奖励
           </p>
         ) : (
           <ul>
@@ -290,7 +290,7 @@ export default function RewardsTab({ data, loaded, title, call, refresh, flash }
                         </span>
                       </div>
                       <div style={{ color: C.muted }}>
-                        使用「<span style={{ color: C.ink }}>{h.reward}</span>」，來自 {h.gameTitle}
+                        使用「<span style={{ color: C.ink }}>{h.reward}</span>」，来自 {h.gameTitle}
                         <span
                           className="inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold text-white mx-1 align-middle"
                           style={{ background: CHIP[h.place] }}
@@ -306,13 +306,13 @@ export default function RewardsTab({ data, loaded, title, call, refresh, flash }
                     </div>
                     {confirmUndo === key ? (
                       <div className="flex items-center gap-2">
-                        <span className="text-sm">取消這次使用？</span>
+                        <span className="text-sm">取消这次使用？</span>
                         <button
                           className={btnPrimary}
                           style={{ background: C.felt }}
                           onClick={() => undo(h.gameId, h.place)}
                         >
-                          確定
+                          确定
                         </button>
                         <button
                           className={btnSecondary}

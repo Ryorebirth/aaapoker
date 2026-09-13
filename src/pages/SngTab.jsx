@@ -42,7 +42,7 @@ function RewardSelect({ id, value, onChange, disabled }) {
       disabled={disabled}
       onChange={(e) => onChange(e.target.value)}
     >
-      <option value="">不設獎勵</option>
+      <option value="">不设奖励</option>
       {options.map((o) => (
         <option key={o} value={o}>
           {o}
@@ -134,8 +134,8 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
         r.notices.length
           ? r.notices.join("；")
           : winner
-          ? `已記錄賽果，第 1 名：${winner.name}`
-          : "已記錄賽果"
+          ? `已记录赛果，第 1 名：${winner.name}`
+          : "已记录赛果"
       );
     } catch (e) {
       setFormError(e.message);
@@ -155,7 +155,7 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
       });
       setEditing(null);
       await refresh();
-      flash("已更新玩家資料");
+      flash("已更新玩家资料");
     } catch (e) {
       setEditError(e.message);
     } finally {
@@ -174,7 +174,7 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
       });
       setRewardEdit(null);
       await refresh();
-      flash("已更新獎勵");
+      flash("已更新奖励");
     } catch (e) {
       setRewardError(e.message);
     } finally {
@@ -187,7 +187,7 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
       await call(`/sng/games/${g.id}`, { method: "DELETE" });
       setConfirmGame(null);
       await refresh();
-      flash("已刪除這場賽果");
+      flash("已删除这场赛果");
     } catch (e) {
       flash(e.message);
     }
@@ -196,7 +196,7 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
   const exportCSV = () => {
     downloadCSV(
       `${safeName(title)}_SitAndGo_${today()}.csv`,
-      ["排名", "姓名", "手機號", "第1名次數", "第2名次數", "第3名次數", "前三名總次數", "最近入圍日期"],
+      ["排名", "姓名", "手机号", "第1名次数", "第2名次数", "第3名次数", "前三名总次数", "最近入围日期"],
       ranked.map((p) => [
         p.rank,
         p.name,
@@ -208,29 +208,29 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
         fmtDateTime(p.lastAt),
       ])
     );
-    flash("已匯出 Excel 檔（CSV）");
+    flash("已汇出 Excel 档（CSV）");
   };
 
   const exportGames = () => {
     const name = (g, place) => g.results.find((r) => r.place === place);
     downloadCSV(
-      `${safeName(title)}_SitAndGo賽果_${today()}.csv`,
+      `${safeName(title)}_SitAndGo赛果_${today()}.csv`,
       [
         "日期",
-        "場次",
+        "场次",
         "第1名",
-        "第1名手機號",
-        "第1名獎勵",
+        "第1名手机号",
+        "第1名奖励",
         "第2名",
-        "第2名手機號",
-        "第2名獎勵",
+        "第2名手机号",
+        "第2名奖励",
         "第3名",
-        "第3名手機號",
-        "第3名獎勵",
-        "記錄人",
+        "第3名手机号",
+        "第3名奖励",
+        "记录人",
       ],
       sng.games.map((g) => {
-        const cells = [fmtDateTime(g.createdAt), g.title || `第 ${g.id} 場`];
+        const cells = [fmtDateTime(g.createdAt), g.title || `第 ${g.id} 场`];
         PLACES.forEach((place) => {
           const r = name(g, place);
           cells.push(
@@ -243,7 +243,7 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
         return cells;
       })
     );
-    flash("已匯出賽果紀錄");
+    flash("已汇出赛果纪录");
   };
 
   const copyRanking = async () => {
@@ -255,7 +255,7 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
       ),
     ];
     const ok = await copyText(lines.join("\n"));
-    flash(ok ? "已複製排名文字" : "無法複製，請改用匯出 Excel");
+    flash(ok ? "已复制排名文字" : "无法复制，请改用汇出 Excel");
   };
 
   return (
@@ -267,14 +267,14 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
           aria-labelledby="sng-form"
         >
           <h2 id="sng-form" className="text-lg font-bold">
-            記錄賽果
+            记录赛果
           </h2>
           <p className="text-xs mb-4" style={{ color: C.muted }}>
-            頭三名全部選填，沒有的名次留空即可。日期會自動記錄。
+            头三名全部选填，没有的名次留空即可。日期会自动记录。
           </p>
 
           <label htmlFor="sng-title" className="block text-sm font-medium mb-1">
-            場次名稱（選填）
+            场次名称（选填）
           </label>
           <input
             id="sng-title"
@@ -282,7 +282,7 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
             style={{ borderColor: C.line }}
             value={form.title}
             maxLength={60}
-            placeholder="例如：週五 SnG #12"
+            placeholder="例如：周五 SnG #12"
             onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
           />
 
@@ -306,7 +306,7 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
                     <RankMark rank={place} />
                     <span className="font-semibold">第 {place} 名</span>
                     <span className="text-xs" style={{ color: C.muted }}>
-                      選填
+                      选填
                     </span>
                   </div>
                   <div className="flex flex-col gap-2">
@@ -342,7 +342,7 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
                     </div>
                     <div>
                       <label htmlFor={`sng-p-${place}`} className="block text-xs font-medium mb-1">
-                        手機號
+                        手机号
                       </label>
                       <input
                         id={`sng-p-${place}`}
@@ -358,14 +358,14 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
                       {match && (
                         <p className="text-xs mt-1" style={{ color: match.name === entry.name.trim() ? C.felt : "#8A5A00" }}>
                           {match.name === entry.name.trim()
-                            ? "已登記的玩家"
-                            : `這個手機號已登記為「${match.name}」，會沿用登記姓名`}
+                            ? "已登记的玩家"
+                            : `这个手机号已登记为「${match.name}」，会沿用登记姓名`}
                         </p>
                       )}
                     </div>
                     <div>
                       <label htmlFor={`sng-r-${place}`} className="block text-xs font-medium mb-1">
-                        獎勵
+                        奖励
                       </label>
                       <RewardSelect
                         id={`sng-r-${place}`}
@@ -374,7 +374,7 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
                       />
                       {!entry.name.trim() && !entry.phone.trim() && entry.reward && (
                         <p className="text-xs mt-1" style={{ color: C.muted }}>
-                          沒有輸入玩家時不會記錄獎勵
+                          没有输入玩家时不会记录奖励
                         </p>
                       )}
                     </div>
@@ -395,10 +395,10 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
             onClick={saveGame}
             disabled={saving}
           >
-            {saving ? "儲存中…" : "儲存賽果"}
+            {saving ? "储存中…" : "储存赛果"}
           </button>
           <p className="text-xs mt-3 leading-relaxed" style={{ color: C.muted }}>
-            如果輸入某個名次，姓名和手機號都要填。同一個手機號會被視為同一位玩家。獎勵只在後台顯示，不會出現在即時排行榜。
+            如果输入某个名次，姓名和手机号都要填。同一个手机号会被视为同一位玩家。奖励只在后台显示，不会出现在即时排行榜。
           </p>
         </section>
 
@@ -411,12 +411,12 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
                     Sit and Go 排名
                   </h2>
                   <p className="text-xs" style={{ color: C.muted }}>
-                    第 1 名次數最多排最前；相同時比較第 2 名，再比較第 3 名次數。
+                    第 1 名次数最多排最前；相同时比较第 2 名，再比较第 3 名次数。
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button className={btnPrimary} style={{ background: C.felt }} onClick={exportCSV} disabled={empty}>
-                    匯出 Excel
+                    汇出 Excel
                   </button>
                   <button
                     className={btnSecondary}
@@ -424,7 +424,7 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
                     onClick={() => setImageUrl(buildSngImage({ title, ranked, phoneOf: phoneOut }))}
                     disabled={empty}
                   >
-                    匯出圖片
+                    汇出图片
                   </button>
                   <button
                     className={btnSecondary}
@@ -432,7 +432,7 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
                     onClick={copyRanking}
                     disabled={empty}
                   >
-                    複製文字
+                    复制文字
                   </button>
                 </div>
               </div>
@@ -442,8 +442,8 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
                   style={{ borderColor: C.line, minWidth: 180 }}
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="搜尋姓名或手機號"
-                  aria-label="搜尋姓名或手機號"
+                  placeholder="搜寻姓名或手机号"
+                  aria-label="搜寻姓名或手机号"
                   disabled={empty}
                 />
                 <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
@@ -453,25 +453,25 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
                     checked={maskOn}
                     onChange={(e) => setMaskOn(e.target.checked)}
                   />
-                  匯出時遮蓋手機號
+                  汇出时遮盖手机号
                 </label>
               </div>
             </div>
 
             {!loaded ? (
               <p className="p-10 text-center text-sm" style={{ color: C.muted }}>
-                載入中…
+                载入中…
               </p>
             ) : empty ? (
               <div className="p-10 text-center">
-                <p className="font-semibold mb-1">還沒有賽果</p>
+                <p className="font-semibold mb-1">还没有赛果</p>
                 <p className="text-sm" style={{ color: C.muted }}>
-                  記錄第一場 Sit and Go 的頭三名後，排名會自動計算。
+                  记录第一场 Sit and Go 的头三名后，排名会自动计算。
                 </p>
               </div>
             ) : visible.length === 0 ? (
               <p className="p-10 text-center text-sm" style={{ color: C.muted }}>
-                找不到「{query}」，請檢查姓名或手機號。
+                找不到「{query}」，请检查姓名或手机号。
               </p>
             ) : (
               <ol>
@@ -499,7 +499,7 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
                             {p.phone}
                           </div>
                           <div className="text-xs" style={{ color: C.muted }}>
-                            最近入圍 {fmtDateTime(p.lastAt)}
+                            最近入围 {fmtDateTime(p.lastAt)}
                           </div>
                         </div>
                         <div className="flex items-center gap-3 tabular-nums">
@@ -530,7 +530,7 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
                           }}
                           aria-expanded={!!isEditing}
                         >
-                          編輯
+                          编辑
                         </button>
                       </div>
                       {isEditing && (
@@ -539,7 +539,7 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
                             <div className="grid gap-2 sm:grid-cols-2">
                               {[
                                 ["name", "姓名", "text"],
-                                ["phone", "手機號", "tel"],
+                                ["phone", "手机号", "tel"],
                               ].map(([key, label, type]) => (
                                 <div key={key}>
                                   <label htmlFor={`se-${key}-${p.id}`} className="block text-xs font-medium mb-1">
@@ -564,7 +564,7 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
                                 onClick={saveEdit}
                                 disabled={editBusy}
                               >
-                                儲存
+                                储存
                               </button>
                               <button
                                 className={btnSecondary}
@@ -593,10 +593,10 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
             <div className="p-4 border-b flex flex-wrap items-center justify-between gap-2" style={{ borderColor: C.line }}>
               <div>
                 <h2 id="sng-games" className="text-lg font-bold">
-                  賽果紀錄
+                  赛果纪录
                 </h2>
                 <p className="text-xs" style={{ color: C.muted }}>
-                  共 {sng.totalGames} 場{sng.totalGames > sng.games.length ? `，顯示最近 ${sng.games.length} 場` : ""}。記錄錯了可以刪除後重新輸入。
+                  共 {sng.totalGames} 场{sng.totalGames > sng.games.length ? `，显示最近 ${sng.games.length} 场` : ""}。记录错了可以删除后重新输入。
                 </p>
               </div>
               <button
@@ -605,12 +605,12 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
                 onClick={exportGames}
                 disabled={!sng.games.length}
               >
-                匯出賽果
+                汇出赛果
               </button>
             </div>
             {!sng.games.length ? (
               <p className="p-8 text-center text-sm" style={{ color: C.muted }}>
-                還沒有賽果紀錄
+                还没有赛果纪录
               </p>
             ) : (
               <ul>
@@ -621,7 +621,7 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
                     style={{ borderColor: C.line }}
                   >
                     <div style={{ width: 120 }}>
-                      <div className="text-sm font-semibold">{g.title || `第 ${g.id} 場`}</div>
+                      <div className="text-sm font-semibold">{g.title || `第 ${g.id} 场`}</div>
                       <div className="text-xs tabular-nums" style={{ color: C.muted }}>
                         {fmtDate(g.createdAt)}
                       </div>
@@ -632,7 +632,7 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
                     <ol className="flex-1 flex flex-col gap-2" style={{ minWidth: 220 }}>
                       {!g.results.length && (
                         <li className="text-sm" style={{ color: C.muted }}>
-                          沒有輸入名次
+                          没有输入名次
                         </li>
                       )}
                       {g.results.map((r) => {
@@ -656,7 +656,7 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
                             {isEditing ? (
                               <div className="mt-1 flex flex-wrap items-center gap-2" style={{ paddingLeft: 32 }}>
                                 <label htmlFor={`rw-${g.id}-${r.place}`} className="sr-only">
-                                  第 {r.place} 名獎勵
+                                  第 {r.place} 名奖励
                                 </label>
                                 <div style={{ width: 180 }}>
                                   <RewardSelect
@@ -671,7 +671,7 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
                                   onClick={saveReward}
                                   disabled={rewardBusy}
                                 >
-                                  儲存
+                                  储存
                                 </button>
                                 <button
                                   className={btnSecondary}
@@ -689,7 +689,7 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
                             ) : (
                               <div className="flex flex-wrap items-center gap-x-2" style={{ paddingLeft: 32 }}>
                                 <span style={{ color: r.reward ? C.ink : C.muted }}>
-                                  獎勵：{r.reward || "不設獎勵"}
+                                  奖励：{r.reward || "不设奖励"}
                                 </span>
                                 {r.reward && r.rewardUsedAt ? (
                                   <span
@@ -715,7 +715,7 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
                                     setRewardError("");
                                     setRewardEdit({ gameId: g.id, place: r.place, value: r.reward || "" });
                                   }}
-                                  aria-label={`修改 ${r.name} 的獎勵`}
+                                  aria-label={`修改 ${r.name} 的奖励`}
                                 >
                                   修改
                                 </button>
@@ -728,9 +728,9 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
                     </ol>
                     {confirmGame === g.id ? (
                       <div className="flex items-center gap-2">
-                        <span className="text-sm">刪除這場？</span>
+                        <span className="text-sm">删除这场？</span>
                         <button className={btnPrimary} style={{ background: C.red }} onClick={() => deleteGame(g)}>
-                          刪除
+                          删除
                         </button>
                         <button
                           className={btnSecondary}
@@ -742,7 +742,7 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
                       </div>
                     ) : (
                       <button className={btnRow} style={{ color: C.red }} onClick={() => setConfirmGame(g.id)}>
-                        刪除
+                        删除
                       </button>
                     )}
                   </li>
@@ -764,13 +764,13 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
-            aria-label="排名圖片"
+            aria-label="排名图片"
           >
             <div className="overflow-auto rounded border" style={{ maxHeight: "62vh", borderColor: C.line }}>
-              <img src={imageUrl} alt="Sit and Go 排名圖片" className="w-full block" />
+              <img src={imageUrl} alt="Sit and Go 排名图片" className="w-full block" />
             </div>
             <p className="text-sm" style={{ color: C.muted }}>
-              手機上可以長按圖片儲存，或直接分享到群組。
+              手机上可以长按图片储存，或直接分享到群组。
             </p>
             <div className="flex justify-end gap-2">
               <button
@@ -778,7 +778,7 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
                 style={{ borderColor: C.line, color: C.ink }}
                 onClick={() => setImageUrl(null)}
               >
-                關閉
+                关闭
               </button>
               <a
                 href={imageUrl}
@@ -786,7 +786,7 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
                 className={btnPrimary + " inline-block"}
                 style={{ background: C.felt }}
               >
-                下載圖片
+                下载图片
               </a>
             </div>
           </div>

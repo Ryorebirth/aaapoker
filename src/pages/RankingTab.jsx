@@ -99,7 +99,7 @@ export default function RankingTab({ players, setPlayers, title, loaded, call, r
       setForm({ name: "", phone: "", points: "" });
       flash(
         r.joinedExisting
-          ? `${r.player.name} 已在 Sit and Go 登記，已加入 Cash Game`
+          ? `${r.player.name} 已在 Sit and Go 登记，已加入常规赛`
           : `已新增 ${r.player.name}`
       );
       nameRef.current && nameRef.current.focus();
@@ -145,7 +145,7 @@ export default function RankingTab({ players, setPlayers, title, loaded, call, r
     runRow(async () => {
       const v = Math.abs(Number(draft.amount));
       if (String(draft.amount || "").trim() === "" || !Number.isFinite(v) || v === 0) {
-        throw new Error("請輸入大於 0 的分數");
+        throw new Error("请输入大于 0 的分数");
       }
       const delta = v * sign;
       const r = await call(`/players/${p.id}/adjust`, {
@@ -160,7 +160,7 @@ export default function RankingTab({ players, setPlayers, title, loaded, call, r
     runRow(async () => {
       const r = await call(`/players/${p.id}`, { method: "PATCH", body: draft });
       upsertLocal(r.player);
-      flash("已更新玩家資料");
+      flash("已更新玩家资料");
     });
 
   const removePlayer = (p) =>
@@ -168,10 +168,10 @@ export default function RankingTab({ players, setPlayers, title, loaded, call, r
       const r = await call(`/players/${p.id}`, { method: "DELETE" });
       if (r.removedFromCashOnly) {
         setPlayers((ps) => ps.map((x) => (x.id === p.id ? { ...x, inCash: false, points: 0 } : x)));
-        flash(`已從 Cash Game 移除 ${p.name}，Sit and Go 紀錄保留`);
+        flash(`已从常规赛移除 ${p.name}，Sit and Go 纪录保留`);
       } else {
         setPlayers((ps) => ps.filter((x) => x.id !== p.id));
-        flash(`已刪除 ${p.name}`);
+        flash(`已删除 ${p.name}`);
       }
     });
 
@@ -184,8 +184,8 @@ export default function RankingTab({ players, setPlayers, title, loaded, call, r
       await refresh();
       flash(
         r.skipped.length
-          ? `已匯入 ${r.imported} 位，略過 ${r.skipped.length} 位（手機號已存在或資料不完整）`
-          : `已匯入 ${r.imported} 位玩家`
+          ? `已汇入 ${r.imported} 位，略过 ${r.skipped.length} 位（手机号已存在或资料不完整）`
+          : `已汇入 ${r.imported} 位玩家`
       );
     } catch (e) {
       flash(e.message);
@@ -204,8 +204,8 @@ export default function RankingTab({ players, setPlayers, title, loaded, call, r
 
   const exportCSV = () => {
     downloadCSV(
-      `${safeName(title)}_CashGame_${today()}.csv`,
-      ["排名", "姓名", "手機號", "積分", "登記日期", "最後更新", "最後修改人"],
+      `${safeName(title)}_常规赛_${today()}.csv`,
+      ["排名", "姓名", "手机号", "积分", "登记日期", "最后更新", "最后修改人"],
       ranked.map((p) => [
         p.rank,
         p.name,
@@ -216,18 +216,18 @@ export default function RankingTab({ players, setPlayers, title, loaded, call, r
         p.updatedBy || "",
       ])
     );
-    flash("已匯出 Excel 檔（CSV）");
+    flash("已汇出 Excel 档（CSV）");
   };
 
   const copyRanking = async () => {
     const lines = [
-      `${title || DEFAULT_TITLE} Cash Game（${today()}）`,
+      `${title || DEFAULT_TITLE} 常规赛（${today()}）`,
       ...ranked.map(
         (p) => `${p.rank}. ${p.name}（${phoneOut(p)}）${fmt(p.points)} 分　更新 ${fmtDate(p.updatedAt)}`
       ),
     ];
     const ok = await copyText(lines.join("\n"));
-    flash(ok ? "已複製排名文字" : "無法複製，請改用匯出 Excel");
+    flash(ok ? "已复制排名文字" : "无法复制，请改用汇出 Excel");
   };
 
   const exportImage = () => setImageUrl(buildRankingImage({ title, ranked, phoneOf: phoneOut }));
@@ -240,7 +240,7 @@ export default function RankingTab({ players, setPlayers, title, loaded, call, r
           style={{ background: "#FBF5E6", borderColor: "#E6D3A3" }}
         >
           <p className="text-sm flex-1" style={{ minWidth: 220 }}>
-            這部裝置有舊版儲存在瀏覽器的資料（{legacy.length} 位玩家）。要匯入到資料庫嗎？手機號已存在的玩家會略過。
+            这部装置有旧版储存在浏览器的资料（{legacy.length} 位玩家）。要汇入到资料库吗？手机号已存在的玩家会略过。
           </p>
           <div className="flex gap-2">
             <button
@@ -249,7 +249,7 @@ export default function RankingTab({ players, setPlayers, title, loaded, call, r
               onClick={importLegacy}
               disabled={importing}
             >
-              {importing ? "匯入中…" : "匯入到資料庫"}
+              {importing ? "汇入中…" : "汇入到资料库"}
             </button>
             <button
               className={btnSecondary}
@@ -286,13 +286,13 @@ export default function RankingTab({ players, setPlayers, title, loaded, call, r
                 maxLength={50}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 onKeyDown={(e) => isEnter(e) && addPlayer()}
-                placeholder="例如：陳大文"
+                placeholder="例如：陈大文"
                 autoComplete="off"
               />
             </div>
             <div>
               <label htmlFor="f-phone" className="block text-sm font-medium mb-1">
-                手機號
+                手机号
               </label>
               <input
                 id="f-phone"
@@ -309,7 +309,7 @@ export default function RankingTab({ players, setPlayers, title, loaded, call, r
             </div>
             <div>
               <label htmlFor="f-points" className="block text-sm font-medium mb-1">
-                積分
+                积分
               </label>
               <input
                 id="f-points"
@@ -338,7 +338,7 @@ export default function RankingTab({ players, setPlayers, title, loaded, call, r
             {adding ? "新增中…" : "新增玩家"}
           </button>
           <p className="text-xs mt-3 leading-relaxed" style={{ color: C.muted }}>
-            按 Enter 也可以新增。手機號不可重複。日期和修改人會自動記錄在資料庫。
+            按 Enter 也可以新增。手机号不可重复。日期和修改人会自动记录在资料库。
           </p>
         </section>
 
@@ -350,7 +350,7 @@ export default function RankingTab({ players, setPlayers, title, loaded, call, r
           <div className="p-4 border-b flex flex-col gap-3" style={{ borderColor: C.line }}>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 id="rank-heading" className="text-lg font-bold">
-                Cash Game 排名
+                常规赛排名
               </h2>
               <div className="flex flex-wrap gap-2">
                 <button
@@ -359,7 +359,7 @@ export default function RankingTab({ players, setPlayers, title, loaded, call, r
                   onClick={exportCSV}
                   disabled={empty}
                 >
-                  匯出 Excel
+                  汇出 Excel
                 </button>
                 <button
                   className={btnSecondary}
@@ -367,7 +367,7 @@ export default function RankingTab({ players, setPlayers, title, loaded, call, r
                   onClick={exportImage}
                   disabled={empty}
                 >
-                  匯出圖片
+                  汇出图片
                 </button>
                 <button
                   className={btnSecondary}
@@ -375,7 +375,7 @@ export default function RankingTab({ players, setPlayers, title, loaded, call, r
                   onClick={copyRanking}
                   disabled={empty}
                 >
-                  複製文字
+                  复制文字
                 </button>
               </div>
             </div>
@@ -385,8 +385,8 @@ export default function RankingTab({ players, setPlayers, title, loaded, call, r
                 style={{ borderColor: C.line, minWidth: 180 }}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="搜尋姓名或手機號"
-                aria-label="搜尋姓名或手機號"
+                placeholder="搜寻姓名或手机号"
+                aria-label="搜寻姓名或手机号"
                 disabled={empty}
               />
               <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
@@ -396,25 +396,25 @@ export default function RankingTab({ players, setPlayers, title, loaded, call, r
                   checked={maskOn}
                   onChange={(e) => setMaskOn(e.target.checked)}
                 />
-                匯出時遮蓋手機號
+                汇出时遮盖手机号
               </label>
             </div>
           </div>
 
           {!loaded ? (
             <p className="p-10 text-center text-sm" style={{ color: C.muted }}>
-              載入中…
+              载入中…
             </p>
           ) : empty ? (
             <div className="p-10 text-center">
-              <p className="font-semibold mb-1">還沒有玩家</p>
+              <p className="font-semibold mb-1">还没有玩家</p>
               <p className="text-sm" style={{ color: C.muted }}>
-                輸入姓名、手機號和積分新增玩家，排名會按積分自動排好。
+                输入姓名、手机号和积分新增玩家，排名会按积分自动排好。
               </p>
             </div>
           ) : visible.length === 0 ? (
             <p className="p-10 text-center text-sm" style={{ color: C.muted }}>
-              找不到「{query}」，請檢查姓名或手機號。
+              找不到「{query}」，请检查姓名或手机号。
             </p>
           ) : (
             <ol>
@@ -430,7 +430,7 @@ export default function RankingTab({ players, setPlayers, title, loaded, call, r
                           {p.phone}
                         </div>
                         <div className="text-xs tabular-nums flex flex-wrap gap-x-3" style={{ color: C.muted }}>
-                          <span>登記 {fmtDateTime(p.createdAt)}</span>
+                          <span>登记 {fmtDateTime(p.createdAt)}</span>
                           <span>
                             更新 {fmtDateTime(p.updatedAt)}
                             {p.updatedBy ? `（${p.updatedBy}）` : ""}
@@ -450,7 +450,7 @@ export default function RankingTab({ players, setPlayers, title, loaded, call, r
                           onClick={() => toggleRow(p, "adjust")}
                           aria-expanded={open === "adjust"}
                         >
-                          加減分
+                          加减分
                         </button>
                         <button
                           className={btnRow}
@@ -458,7 +458,7 @@ export default function RankingTab({ players, setPlayers, title, loaded, call, r
                           onClick={() => toggleRow(p, "edit")}
                           aria-expanded={open === "edit"}
                         >
-                          編輯
+                          编辑
                         </button>
                         <button
                           className={btnRow}
@@ -466,7 +466,7 @@ export default function RankingTab({ players, setPlayers, title, loaded, call, r
                           onClick={() => toggleRow(p, "delete")}
                           aria-expanded={open === "delete"}
                         >
-                          刪除
+                          删除
                         </button>
                       </div>
                     </div>
@@ -479,7 +479,7 @@ export default function RankingTab({ players, setPlayers, title, loaded, call, r
                               <div className="grid gap-2 sm:grid-cols-3">
                                 <div>
                                   <label htmlFor={`adj-${p.id}`} className="block text-xs font-medium mb-1">
-                                    分數
+                                    分数
                                   </label>
                                   <input
                                     id={`adj-${p.id}`}
@@ -496,7 +496,7 @@ export default function RankingTab({ players, setPlayers, title, loaded, call, r
                                 </div>
                                 <div className="sm:col-span-2">
                                   <label htmlFor={`note-${p.id}`} className="block text-xs font-medium mb-1">
-                                    備註（選填，會記錄在修改紀錄）
+                                    备注（选填，会记录在修改纪录）
                                   </label>
                                   <input
                                     id={`note-${p.id}`}
@@ -504,7 +504,7 @@ export default function RankingTab({ players, setPlayers, title, loaded, call, r
                                     style={{ borderColor: C.line }}
                                     value={draft.note || ""}
                                     maxLength={200}
-                                    placeholder="例如：9月12日第三局冠軍"
+                                    placeholder="例如：9月12日第三局冠军"
                                     onChange={(e) => setDraft({ ...draft, note: e.target.value })}
                                     onKeyDown={(e) => isEnter(e) && applyAdjust(p, 1)}
                                   />
@@ -546,8 +546,8 @@ export default function RankingTab({ players, setPlayers, title, loaded, call, r
                               <div className="grid gap-2 sm:grid-cols-3">
                                 {[
                                   ["name", "姓名", "text"],
-                                  ["phone", "手機號", "tel"],
-                                  ["points", "積分", "number"],
+                                  ["phone", "手机号", "tel"],
+                                  ["points", "积分", "number"],
                                 ].map(([key, label, type]) => (
                                   <div key={key}>
                                     <label htmlFor={`e-${key}-${p.id}`} className="block text-xs font-medium mb-1">
@@ -573,7 +573,7 @@ export default function RankingTab({ players, setPlayers, title, loaded, call, r
                                   onClick={() => saveEdit(p)}
                                   disabled={rowBusy}
                                 >
-                                  儲存
+                                  储存
                                 </button>
                                 <button
                                   className={btnSecondary}
@@ -589,7 +589,7 @@ export default function RankingTab({ players, setPlayers, title, loaded, call, r
                           {open === "delete" && (
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="text-sm flex-1">
-                                刪除「{p.name}」？玩家會從 Cash Game 排名移除，修改紀錄和 Sit and Go 成績會保留。
+                                删除「{p.name}」？玩家会从常规赛排名移除，修改纪录和 Sit and Go 成绩会保留。
                               </span>
                               <button
                                 className={btnPrimary}
@@ -597,7 +597,7 @@ export default function RankingTab({ players, setPlayers, title, loaded, call, r
                                 onClick={() => removePlayer(p)}
                                 disabled={rowBusy}
                               >
-                                刪除
+                                删除
                               </button>
                               <button
                                 className={btnSecondary}
@@ -624,7 +624,7 @@ export default function RankingTab({ players, setPlayers, title, loaded, call, r
           )}
           {!empty && (
             <p className="p-4 text-sm" style={{ color: C.muted }}>
-              積分相同會並列同一名次
+              积分相同会并列同一名次
             </p>
           )}
         </section>
@@ -641,13 +641,13 @@ export default function RankingTab({ players, setPlayers, title, loaded, call, r
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
-            aria-label="排名圖片"
+            aria-label="排名图片"
           >
             <div className="overflow-auto rounded border" style={{ maxHeight: "62vh", borderColor: C.line }}>
-              <img src={imageUrl} alt="排名圖片" className="w-full block" />
+              <img src={imageUrl} alt="排名图片" className="w-full block" />
             </div>
             <p className="text-sm" style={{ color: C.muted }}>
-              手機上可以長按圖片儲存，或直接分享到群組。
+              手机上可以长按图片储存，或直接分享到群组。
             </p>
             <div className="flex justify-end gap-2">
               <button
@@ -655,15 +655,15 @@ export default function RankingTab({ players, setPlayers, title, loaded, call, r
                 style={{ borderColor: C.line, color: C.ink }}
                 onClick={() => setImageUrl(null)}
               >
-                關閉
+                关闭
               </button>
               <a
                 href={imageUrl}
-                download={`${safeName(title)}_CashGame_${today()}.png`}
+                download={`${safeName(title)}_常规赛_${today()}.png`}
                 className={btnPrimary + " inline-block"}
                 style={{ background: C.felt }}
               >
-                下載圖片
+                下载图片
               </a>
             </div>
           </div>

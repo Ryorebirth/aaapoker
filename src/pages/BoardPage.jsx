@@ -16,9 +16,9 @@ import {
 
 const ROTATE_SECONDS = 20;
 const VIEWS = [
-  ["cash", "Cash Game"],
+  ["cash", "常规赛"],
   ["sng", "Sit and Go"],
-  ["rotate", "輪流顯示"],
+  ["rotate", "轮流显示"],
 ];
 
 function readView() {
@@ -218,7 +218,7 @@ export default function BoardPage() {
   }, [view]);
 
   useEffect(() => {
-    document.title = `${data.title || DEFAULT_TITLE}｜即時排行榜`;
+    document.title = `${data.title || DEFAULT_TITLE}｜即时排行榜`;
   }, [data.title]);
 
   const chooseView = (v) => {
@@ -247,7 +247,7 @@ export default function BoardPage() {
       if (document.fullscreenElement) return await document.exitFullscreen();
       await rootRef.current.requestFullscreen();
     } catch {
-      setNotice("這個瀏覽器不支援全螢幕，可以按 F11");
+      setNotice("这个浏览器不支援全屏，可以按 F11");
       setTimeout(() => setNotice(""), 3000);
     }
   };
@@ -276,11 +276,11 @@ export default function BoardPage() {
                   className={`inline-block w-2 h-2 rounded-full ${syncOk ? "motion-safe:animate-pulse" : ""}`}
                   style={{ background: syncOk ? C.up : C.down }}
                 />
-                {syncOk ? "即時更新中" : "連線中斷，正在重試"}
+                {syncOk ? "即时更新中" : "连线中断，正在重试"}
               </span>
               <span>{ranked.length} 位玩家</span>
-              {isSng && <span>共 {data.totalGames} 場</span>}
-              <span>最後更新 {fmtDateTime(lastUpdate || null)}</span>
+              {isSng && <span>共 {data.totalGames} 场</span>}
+              <span>最后更新 {fmtDateTime(lastUpdate || null)}</span>
             </div>
           </div>
           <div className="flex flex-col items-end gap-3">
@@ -291,7 +291,7 @@ export default function BoardPage() {
                 style={{ borderColor: "rgba(255,255,255,0.35)", color: "#fff" }}
                 onClick={goFullscreen}
               >
-                全螢幕
+                全屏
               </button>
               <a href="/" className={boardBtn} style={{ background: C.brass, borderColor: C.brass, color: C.ink }}>
                 管理登入
@@ -304,7 +304,7 @@ export default function BoardPage() {
           className="inline-flex rounded-md overflow-hidden border mb-6"
           style={{ borderColor: "rgba(255,255,255,0.25)" }}
           role="group"
-          aria-label="選擇排行榜"
+          aria-label="选择排行榜"
         >
           {VIEWS.map(([key, label]) => (
             <button
@@ -324,15 +324,15 @@ export default function BoardPage() {
 
         {!loaded ? (
           <p className="py-20 text-center" style={{ color: "rgba(255,255,255,0.7)" }}>
-            載入中…
+            载入中…
           </p>
         ) : ranked.length === 0 ? (
           <div className="py-20 text-center" style={{ color: "rgba(255,255,255,0.7)" }}>
-            <p className="text-xl font-semibold text-white mb-2">{isSng ? "還沒有賽果" : "還沒有玩家"}</p>
+            <p className="text-xl font-semibold text-white mb-2">{isSng ? "还没有赛果" : "还没有玩家"}</p>
             <p>
               {isSng
-                ? "管理員記錄 Sit and Go 賽果後，這裡會即時顯示排名。"
-                : "管理員新增玩家後，這裡會即時顯示積分。"}
+                ? "管理员记录 Sit and Go 赛果后，这里会即时显示排名。"
+                : "管理员新增玩家后，这里会即时显示积分。"}
             </p>
           </div>
         ) : isSng ? (
@@ -342,9 +342,9 @@ export default function BoardPage() {
         )}
 
         <p className="text-xs mt-6" style={{ color: "rgba(255,255,255,0.5)" }}>
-          {isSng ? "按第 1 名次數排名，相同時比較第 2 名、第 3 名次數。" : "積分相同並列同一名次。"}
-          這個頁面公開瀏覽，手機號已遮蓋。
-          {view === "rotate" && `每 ${ROTATE_SECONDS} 秒切換一次。`}
+          {isSng ? "按第 1 名次数排名，相同时比较第 2 名、第 3 名次数。" : "积分相同并列同一名次。"}
+          这个页面公开浏览，手机号已遮盖。
+          {view === "rotate" && `每 ${ROTATE_SECONDS} 秒切换一次。`}
         </p>
       </div>
       {notice && (

@@ -8,11 +8,11 @@ import LogsTab from "./LogsTab.jsx";
 import AdminsTab from "./AdminsTab.jsx";
 
 const TABS = [
-  ["ranking", "Cash Game"],
+  ["ranking", "常规赛"],
   ["sng", "Sit and Go"],
-  ["rewards", "獎勵紀錄表"],
-  ["logs", "修改紀錄"],
-  ["admins", "管理員"],
+  ["rewards", "奖励纪录表"],
+  ["logs", "修改纪录"],
+  ["admins", "管理员"],
 ];
 
 export default function Dashboard({ admin, onSignedOut }) {
@@ -82,7 +82,7 @@ export default function Dashboard({ admin, onSignedOut }) {
       const r = await call("/settings", { method: "PUT", body: { title: next } });
       setTitle(r.title);
       setTitleDraft(r.title);
-      flash("已更新排行榜名稱");
+      flash("已更新排行榜名称");
     } catch (e) {
       setTitleDraft(title);
       flash(e.message);
@@ -127,12 +127,12 @@ export default function Dashboard({ admin, onSignedOut }) {
                 onBlur={saveTitle}
                 onKeyDown={(e) => isEnter(e) && e.currentTarget.blur()}
                 maxLength={60}
-                placeholder="排行榜名稱"
-                aria-label="排行榜名稱（匯出和即時排行榜會使用）"
+                placeholder="排行榜名称"
+                aria-label="排行榜名称（汇出和即时排行榜会使用）"
                 className="w-full max-w-xl bg-transparent text-white text-2xl sm:text-3xl font-bold border-b-2 border-transparent focus:border-yellow-600 focus:outline-none pb-1"
               />
               <p className="text-xs mt-1" style={{ color: "rgba(255,255,255,0.65)" }}>
-                點擊名稱可修改，匯出檔案和即時排行榜都會使用
+                点击名称可修改，汇出档案和即时排行榜都会使用
               </p>
             </div>
             <div className="flex items-center gap-4">
@@ -143,14 +143,14 @@ export default function Dashboard({ admin, onSignedOut }) {
                 className="px-4 py-2 rounded-md text-sm font-semibold hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-600"
                 style={{ background: C.brass, color: C.ink }}
               >
-                即時排行榜
+                即时排行榜
               </a>
               <div className="text-sm text-right" style={{ color: "rgba(255,255,255,0.85)" }}>
                 <div className="font-semibold text-white">
                   {tab === "sng"
-                    ? `${sng.standings.length} 位玩家　${sng.totalGames} 場`
+                    ? `${sng.standings.length} 位玩家　${sng.totalGames} 场`
                     : tab === "rewards"
-                    ? `${rewards.rewards.reduce((n, r) => n + r.available, 0)} 個未使用獎勵`
+                    ? `${rewards.rewards.reduce((n, r) => n + r.available, 0)} 个未使用奖励`
                     : `${players.filter((p) => p.inCash).length} 位玩家`}
                 </div>
                 <div
@@ -158,7 +158,7 @@ export default function Dashboard({ admin, onSignedOut }) {
                   style={{ color: syncError ? "#F3B3AD" : "rgba(255,255,255,0.65)" }}
                   aria-live="polite"
                 >
-                  {syncError ? "暫時無法同步" : "已連接資料庫"}
+                  {syncError ? "暂时无法同步" : "已连接资料库"}
                 </div>
               </div>
             </div>
@@ -192,7 +192,7 @@ export default function Dashboard({ admin, onSignedOut }) {
             style={{ background: "#FBEAE8", color: C.red }}
             role="alert"
           >
-            {syncError}。畫面顯示的可能不是最新資料，系統會自動重試。
+            {syncError}。画面显示的可能不是最新资料，系统会自动重试。
           </p>
         )}
         {tab === "ranking" && (

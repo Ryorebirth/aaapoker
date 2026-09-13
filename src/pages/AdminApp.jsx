@@ -23,7 +23,7 @@ export default function AdminApp() {
     return (
       <Shell>
         <p className="text-center text-sm" style={{ color: C.muted }}>
-          載入中…
+          载入中…
         </p>
       </Shell>
     );
@@ -32,12 +32,12 @@ export default function AdminApp() {
   if (state.error) {
     return (
       <Shell>
-        <p className="font-semibold mb-2">無法連線到系統</p>
+        <p className="font-semibold mb-2">无法连线到系统</p>
         <p className="text-sm mb-4" style={{ color: C.muted }}>
           {state.error}
         </p>
         <button className={btnPrimary + " w-full"} style={{ background: C.felt }} onClick={loadStatus}>
-          重試
+          重试
         </button>
       </Shell>
     );
@@ -72,12 +72,12 @@ function Shell({ children }) {
           <div className="text-lg mb-2" style={{ color: C.brass, letterSpacing: "0.35em" }} aria-hidden="true">
             ♠ ♥ ♦ ♣
           </div>
-          <h1 className="text-2xl font-bold text-white">撲克積分管理</h1>
+          <h1 className="text-2xl font-bold text-white">扑克积分管理</h1>
         </div>
         <div className="bg-white rounded-lg p-6">{children}</div>
         <p className="text-center text-sm mt-5">
           <a href="/board" className="underline" style={{ color: "rgba(255,255,255,0.8)" }}>
-            查看即時排行榜
+            查看即时排行榜
           </a>
         </p>
       </div>
@@ -96,7 +96,7 @@ function AuthForm({ mode, onDone, onSetupTaken }) {
   const submit = async () => {
     if (busy) return;
     setError("");
-    if (isSetup && password !== confirm) return setError("兩次輸入的密碼不一樣");
+    if (isSetup && password !== confirm) return setError("两次输入的密码不一样");
     setBusy(true);
     try {
       const r = await api(isSetup ? "/auth/setup" : "/auth/login", {
@@ -116,16 +116,16 @@ function AuthForm({ mode, onDone, onSetupTaken }) {
 
   return (
     <Shell>
-      <h2 className="text-lg font-bold mb-1">{isSetup ? "建立第一個管理員" : "管理員登入"}</h2>
+      <h2 className="text-lg font-bold mb-1">{isSetup ? "建立第一个管理员" : "管理员登入"}</h2>
       <p className="text-sm mb-5" style={{ color: C.muted }}>
         {isSetup
-          ? "系統還沒有管理員。這個帳號可以管理積分，以及新增其他管理員。"
-          : "登入後可以新增玩家、加減分和查看修改紀錄。"}
+          ? "系统还没有管理员。这个帐号可以管理积分，以及新增其他管理员。"
+          : "登入后可以新增玩家、加减分和查看修改纪录。"}
       </p>
       <div className="flex flex-col gap-3">
         <div>
           <label htmlFor="u" className="block text-sm font-medium mb-1">
-            帳號
+            帐号
           </label>
           <input
             id="u"
@@ -140,13 +140,13 @@ function AuthForm({ mode, onDone, onSetupTaken }) {
           />
           {isSetup && (
             <p className="text-xs mt-1" style={{ color: C.muted }}>
-              3 至 32 個英文字母或數字
+              3 至 32 个英文字母或数字
             </p>
           )}
         </div>
         <div>
           <label htmlFor="p" className="block text-sm font-medium mb-1">
-            密碼
+            密码
           </label>
           <input
             id="p"
@@ -160,14 +160,14 @@ function AuthForm({ mode, onDone, onSetupTaken }) {
           />
           {isSetup && (
             <p className="text-xs mt-1" style={{ color: C.muted }}>
-              最少 8 個字元
+              最少 8 个字元
             </p>
           )}
         </div>
         {isSetup && (
           <div>
             <label htmlFor="c" className="block text-sm font-medium mb-1">
-              再輸入一次密碼
+              再输入一次密码
             </label>
             <input
               id="c"
@@ -193,7 +193,7 @@ function AuthForm({ mode, onDone, onSetupTaken }) {
         onClick={submit}
         disabled={busy}
       >
-        {busy ? "請稍候…" : isSetup ? "建立並登入" : "登入"}
+        {busy ? "请稍候…" : isSetup ? "建立并登入" : "登入"}
       </button>
     </Shell>
   );

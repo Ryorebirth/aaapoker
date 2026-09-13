@@ -15,7 +15,7 @@ export async function api(path, { method = "GET", body } = {}) {
       body: body !== undefined ? JSON.stringify(body) : method !== "GET" ? "{}" : undefined,
     });
   } catch {
-    throw new ApiError(0, "無法連線到伺服器，請檢查網絡");
+    throw new ApiError(0, "无法连线到伺服器，请检查网络");
   }
   let data = null;
   try {
@@ -23,6 +23,6 @@ export async function api(path, { method = "GET", body } = {}) {
   } catch {
     // non-JSON response
   }
-  if (!res.ok) throw new ApiError(res.status, (data && data.error) || `伺服器錯誤（${res.status}）`);
+  if (!res.ok) throw new ApiError(res.status, (data && data.error) || `伺服器错误（${res.status}）`);
   return data;
 }

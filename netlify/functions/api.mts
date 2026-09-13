@@ -159,13 +159,13 @@ async function setup(req: Request) {
   const result = await tx(async (query) => {
     await query(`LOCK TABLE admins IN EXCLUSIVE MODE`);
     const [{ count }] = await query(`SELECT COUNT(*)::int AS count FROM admins`);
-    if (count > 0) throw new HttpError(409, "系統已經設定好管理員，請直接登入");
+    if (count > 0) throw new HttpError(409, "系统已经设定好管理员，请直接登入");
     const [admin] = await query(
       `INSERT INTO admins (username, password_hash, last_login_at) VALUES ($1, $2, NOW()) RETURNING id, username`,
       [username, passwordHash]
     );
     const token = await createSession(query, admin.id);
-    await log(query, { action: "admin_create", admin: username, detail: `建立第一個管理員 ${username}` });
+    await log(query, { action: "admin_create", admin: username, detail: `建立第一个管理员 ${username}` });
     return { admin, token };
   });
   return json({ admin: result.admin }, 201, { "Set-Cookie": sessionCookie(result.token) });
@@ -181,11 +181,11 @@ async function login(req: Request) {
   );
   if (!admin) {
     verifyPassword(password, getDummyHash());
-    throw new HttpError(401, "帳號或密碼不正確");
+    throw new HttpError(401, "帐号或密码不正确");
   }
   if (admin.locked_until && new Date(admin.locked_until) > new Date()) {
     const mins = Math.max(1, Math.ceil((new Date(admin.locked_until).getTime() - Date.now()) / 60000));
-    throw new HttpError(429, `登入失敗次數太多，請 ${mins} 分鐘後再試`);
+    throw new HttpError(429, `登入失败次数太多，请 ${mins} 分钟后再试`);
   }
   if (!verifyPassword(password, admin.password_hash)) {
     const fails = admin.failed_attempts + 1;
@@ -194,10 +194,10 @@ async function login(req: Request) {
         `UPDATE admins SET failed_attempts = 0, locked_until = NOW() + ($1 || ' minutes')::interval WHERE id = $2`,
         [String(LOCK_MINUTES), admin.id]
       );
-      throw new HttpError(429, `登入失敗次數太多，帳號已暫時鎖定 ${LOCK_MINUTES} 分鐘`);
+      throw new HttpError(429, `登入失败次数太多，帐号已暂时锁定 ${LOCK_MINUTES} 分钟`);
     }
     await q(`UPDATE admins SET failed_attempts = $1 WHERE id = $2`, [fails, admin.id]);
-    throw new HttpError(401, "帳號或密碼不正確");
+    throw new HttpError(401, "帐号或密码不正确");
   }
   const token = await tx(async (query) => {
     await query(`DELETE FROM sessions WHERE expires_at < NOW()`);
@@ -224,7 +224,7 @@ async function logout(req: Request) {
 async function listPlayers() {
   const rows = await q(`SELECT * FROM players ORDER BY points DESC, name ASC`);
   const [setting] = await q(`SELECT value FROM settings WHERE key = 'title'`);
-  return json({ title: setting?.value ?? "撲克積分排行榜", players: rows.map(toPlayer) });
+  return json({ title: setting?.value ?? "扑克积分排行榜", players: rows.map(toPlayer) });
 }
 
 async function duplicateMessage(query: Query, phoneNormalized: string, excludeId?: number) {
@@ -232,7 +232,7 @@ async function duplicateMessage(query: Query, phoneNormalized: string, excludeId
     `SELECT name FROM players WHERE phone_normalized = $1 AND ($2::int IS NULL OR id <> $2::int)`,
     [phoneNormalized, excludeId ?? null]
   );
-  return rows[0] ? `這個手機號已登記給「${rows[0].name}」` : null;
+  return rows[0] ? `这个手机号已登记给「${rows[0].name}」` : null;
 }
 
 async function createPlayer(req: Request, admin: Admin) {
@@ -242,20 +242,20 @@ async function createPlayer(req: Request, admin: Admin) {
       p.phoneNormalized,
     ]);
     if (existing && existing.in_cash) {
-      throw new HttpError(409, `這個手機號已登記給「${existing.name}」，請在排名中直接加減分`);
+      throw new HttpError(409, `这个手机号已登记给「${existing.name}」，请在排名中直接加减分`);
     }
     let row;
     let detail: string | null = null;
     if (existing) {
-      // Player already registered through Sit and Go: add them to Cash Game
+      // Player already registered through Sit and Go: add them to 常规赛
       [row] = await query(
         `UPDATE players SET in_cash = TRUE, points = $1, updated_at = NOW(), updated_by = $2
           WHERE id = $3 RETURNING *`,
         [p.points, admin.username, existing.id]
       );
       detail =
-        "已在 Sit and Go 登記的玩家加入 Cash Game" +
-        (existing.name !== p.name ? `（沿用已登記姓名「${existing.name}」）` : "");
+        "已在 Sit and Go 登记的玩家加入常规赛" +
+        (existing.name !== p.name ? `（沿用已登记姓名「${existing.name}」）` : "");
     } else {
       [row] = await query(
         `INSERT INTO players (name, phone, phone_normalized, points, created_by, updated_by)
@@ -287,15 +287,15 @@ async function editPlayer(req: Request, admin: Admin, id: number) {
   const board = body.board === "sng" ? "sng" : "cash";
   const player = await tx(async (query) => {
     const [old] = await query(`SELECT * FROM players WHERE id = $1 FOR UPDATE`, [id]);
-    if (!old) throw new HttpError(404, "找不到這位玩家，可能已被刪除");
+    if (!old) throw new HttpError(404, "找不到这位玩家，可能已被删除");
     const dup = await duplicateMessage(query, p.phoneNormalized, id);
     if (dup) throw new HttpError(409, dup);
     const oldPoints = Number(old.points);
     const newPoints = keepPoints ? oldPoints : p.points;
     const changes: string[] = [];
     if (old.name !== p.name) changes.push(`姓名 ${old.name} → ${p.name}`);
-    if (old.phone !== p.phone) changes.push(`手機號 ${old.phone} → ${p.phone}`);
-    if (oldPoints !== newPoints) changes.push(`積分 ${oldPoints} → ${newPoints}`);
+    if (old.phone !== p.phone) changes.push(`手机号 ${old.phone} → ${p.phone}`);
+    if (oldPoints !== newPoints) changes.push(`积分 ${oldPoints} → ${newPoints}`);
     if (!changes.length) return old;
     const [row] = await query(
       `UPDATE players SET name = $1, phone = $2, phone_normalized = $3, points = $4,
@@ -330,7 +330,7 @@ async function adjustPlayer(req: Request, admin: Admin, id: number) {
         WHERE id = $3 AND in_cash RETURNING *`,
       [delta, admin.username, id]
     );
-    if (!row) throw new HttpError(404, "找不到這位玩家，可能已被刪除");
+    if (!row) throw new HttpError(404, "找不到这位玩家，可能已被删除");
     const after = Number(row.points);
     await log(query, {
       action: "adjust",
@@ -352,10 +352,10 @@ async function adjustPlayer(req: Request, admin: Admin, id: number) {
 async function deletePlayer(admin: Admin, id: number) {
   const result = await tx(async (query) => {
     const [row] = await query(`SELECT * FROM players WHERE id = $1 FOR UPDATE`, [id]);
-    if (!row) throw new HttpError(404, "找不到這位玩家，可能已被刪除");
+    if (!row) throw new HttpError(404, "找不到这位玩家，可能已被删除");
     const [{ count }] = await query(`SELECT COUNT(*)::int AS count FROM sng_results WHERE player_id = $1`, [id]);
     if (count > 0) {
-      // Keep the player (and their Sit and Go results), only remove from Cash Game
+      // Keep the player (and their Sit and Go results), only remove from 常规赛
       await query(
         `UPDATE players SET in_cash = FALSE, points = 0, updated_at = NOW(), updated_by = $1 WHERE id = $2`,
         [admin.username, id]
@@ -372,7 +372,7 @@ async function deletePlayer(admin: Admin, id: number) {
       playerPhone: row.phone,
       before: Number(row.points),
       after: null,
-      detail: count > 0 ? "從 Cash Game 移除，保留 Sit and Go 紀錄" : null,
+      detail: count > 0 ? "从常规赛移除，保留 Sit and Go 纪录" : null,
     });
     return { removedFromCashOnly: count > 0 };
   });
@@ -455,19 +455,19 @@ async function createSngGame(req: Request, admin: Admin) {
     const label = PLACE_LABEL[place];
     const reward = validReward((item as any)?.reward, `${label}：`);
     if (!name && !phone) {
-      if (reward) throw new HttpError(400, `${label}：選擇獎勵前請先輸入玩家姓名和手機號`);
+      if (reward) throw new HttpError(400, `${label}：选择奖励前请先输入玩家姓名和手机号`);
       continue;
     }
-    if (!name) throw new HttpError(400, `${label}：請輸入姓名`);
-    if (name.length > 50) throw new HttpError(400, `${label}：姓名不可超過 50 個字`);
-    if (!/^\+?[\d\s-]{6,20}$/.test(phone)) throw new HttpError(400, `${label}：手機號格式不正確`);
+    if (!name) throw new HttpError(400, `${label}：请输入姓名`);
+    if (name.length > 50) throw new HttpError(400, `${label}：姓名不可超过 50 个字`);
+    if (!/^\+?[\d\s-]{6,20}$/.test(phone)) throw new HttpError(400, `${label}：手机号格式不正确`);
     entries.push({ place, name, phone, phoneNormalized: normPhone(phone), reward });
   }
 
   const places = entries.map((e) => e.place);
-  if (new Set(places).size !== places.length) throw new HttpError(400, "每個名次只可以有一位玩家");
+  if (new Set(places).size !== places.length) throw new HttpError(400, "每个名次只可以有一位玩家");
   if (new Set(entries.map((e) => e.phoneNormalized)).size !== entries.length) {
-    throw new HttpError(400, "同一個手機號不可以同時拿兩個名次");
+    throw new HttpError(400, "同一个手机号不可以同时拿两个名次");
   }
   entries.sort((a, b) => a.place - b.place);
 
@@ -476,7 +476,7 @@ async function createSngGame(req: Request, admin: Admin) {
       `INSERT INTO sng_games (title, created_by) VALUES ($1, $2) RETURNING *`,
       [title, admin.username]
     );
-    const gameLabel = title || `第 ${game.id} 場`;
+    const gameLabel = title || `第 ${game.id} 场`;
     const notices: string[] = [];
     const results = [];
     for (const e of entries) {
@@ -491,8 +491,8 @@ async function createSngGame(req: Request, admin: Admin) {
           [e.name, e.phone, e.phoneNormalized, admin.username]
         );
       } else if (player.name !== e.name) {
-        note = `（手機號已登記為「${player.name}」，沿用登記姓名）`;
-        notices.push(`${PLACE_LABEL[e.place]}的手機號已登記為「${player.name}」，已沿用登記姓名`);
+        note = `（手机号已登记为「${player.name}」，沿用登记姓名）`;
+        notices.push(`${PLACE_LABEL[e.place]}的手机号已登记为「${player.name}」，已沿用登记姓名`);
       }
       await query(`INSERT INTO sng_results (game_id, player_id, place, reward) VALUES ($1, $2, $3, $4)`, [
         game.id,
@@ -507,7 +507,7 @@ async function createSngGame(req: Request, admin: Admin) {
         playerId: player.id,
         playerName: player.name,
         playerPhone: player.phone,
-        detail: `${gameLabel} ${PLACE_LABEL[e.place]}${e.reward ? `　獎勵：${e.reward}` : ""}${note}`,
+        detail: `${gameLabel} ${PLACE_LABEL[e.place]}${e.reward ? `　奖励：${e.reward}` : ""}${note}`,
       });
       results.push({ place: e.place, playerId: player.id, name: player.name, phone: player.phone, reward: e.reward });
     }
@@ -520,7 +520,7 @@ async function createSngGame(req: Request, admin: Admin) {
 }
 
 async function updateSngReward(req: Request, admin: Admin, gameId: number, place: number) {
-  if (![1, 2, 3].includes(place)) throw new HttpError(404, "找不到這個名次");
+  if (![1, 2, 3].includes(place)) throw new HttpError(404, "找不到这个名次");
   const body = await readJson(req);
   const reward = validReward(body.reward);
   const result = await tx(async (query) => {
@@ -533,14 +533,14 @@ async function updateSngReward(req: Request, admin: Admin, gameId: number, place
         FOR UPDATE OF r`,
       [gameId, place]
     );
-    if (!row) throw new HttpError(404, "找不到這個名次的賽果，可能已被刪除");
+    if (!row) throw new HttpError(404, "找不到这个名次的赛果，可能已被删除");
     const next = reward;
     if ((row.reward ?? null) === next) return { reward: next };
     if (row.reward_used_at) {
-      throw new HttpError(409, "這個獎勵已經使用，請先在獎勵紀錄表取消使用，才可以修改");
+      throw new HttpError(409, "这个奖励已经使用，请先在奖励纪录表取消使用，才可以修改");
     }
     await query(`UPDATE sng_results SET reward = $1 WHERE game_id = $2 AND place = $3`, [next, gameId, place]);
-    const gameLabel = row.title || `第 ${row.game_id} 場`;
+    const gameLabel = row.title || `第 ${row.game_id} 场`;
     await log(query, {
       action: "sng_reward",
       board: "sng",
@@ -548,7 +548,7 @@ async function updateSngReward(req: Request, admin: Admin, gameId: number, place
       playerId: row.player_id,
       playerName: row.name,
       playerPhone: row.phone,
-      detail: `${gameLabel} ${PLACE_LABEL[place]} 獎勵：${row.reward || "（未填）"} → ${next || "（未填）"}`,
+      detail: `${gameLabel} ${PLACE_LABEL[place]} 奖励：${row.reward || "（未填）"} → ${next || "（未填）"}`,
     });
     return { reward: next };
   });
@@ -611,7 +611,7 @@ async function listRewards() {
       playerId: h.player_id,
       name: h.name,
       phone: h.phone,
-      gameTitle: h.title || `第 ${h.game_id} 場`,
+      gameTitle: h.title || `第 ${h.game_id} 场`,
       gameAt: h.game_at,
     })),
   });
@@ -621,7 +621,7 @@ async function useReward(req: Request, admin: Admin) {
   const body = await readJson(req);
   const playerId = validId(String(body.playerId ?? ""));
   const reward = String(body.reward ?? "").trim();
-  if (!reward) throw new HttpError(400, "請選擇獎勵");
+  if (!reward) throw new HttpError(400, "请选择奖励");
   const result = await tx(async (query) => {
     // Use the oldest unused reward of this type first
     const [item] = await query(
@@ -635,7 +635,7 @@ async function useReward(req: Request, admin: Admin) {
         FOR UPDATE OF r`,
       [playerId, reward]
     );
-    if (!item) throw new HttpError(409, `這位玩家已經沒有未使用的「${reward}」`);
+    if (!item) throw new HttpError(409, `这位玩家已经没有未使用的「${reward}」`);
     await query(
       `UPDATE sng_results SET reward_used_at = NOW(), reward_used_by = $1 WHERE game_id = $2 AND place = $3`,
       [admin.username, item.game_id, item.place]
@@ -645,7 +645,7 @@ async function useReward(req: Request, admin: Admin) {
         WHERE player_id = $1 AND reward = $2 AND reward_used_at IS NULL`,
       [playerId, reward]
     );
-    const gameLabel = item.title || `第 ${item.game_id} 場`;
+    const gameLabel = item.title || `第 ${item.game_id} 场`;
     await log(query, {
       action: "reward_use",
       board: "sng",
@@ -653,7 +653,7 @@ async function useReward(req: Request, admin: Admin) {
       playerId,
       playerName: item.name,
       playerPhone: item.phone,
-      detail: `使用「${reward}」（來自 ${gameLabel} ${PLACE_LABEL[item.place]}），尚餘 ${left} 個`,
+      detail: `使用「${reward}」（来自 ${gameLabel} ${PLACE_LABEL[item.place]}），尚余 ${left} 个`,
     });
     return { name: item.name, reward, left, gameId: item.game_id, place: item.place };
   });
@@ -664,7 +664,7 @@ async function undoReward(req: Request, admin: Admin) {
   const body = await readJson(req);
   const gameId = validId(String(body.gameId ?? ""));
   const place = Number(body.place);
-  if (![1, 2, 3].includes(place)) throw new HttpError(404, "找不到這個名次");
+  if (![1, 2, 3].includes(place)) throw new HttpError(404, "找不到这个名次");
   const result = await tx(async (query) => {
     const [item] = await query(
       `SELECT r.reward, r.reward_used_at, g.title, p.id AS player_id, p.name, p.phone
@@ -675,13 +675,13 @@ async function undoReward(req: Request, admin: Admin) {
         FOR UPDATE OF r`,
       [gameId, place]
     );
-    if (!item || !item.reward) throw new HttpError(404, "找不到這個獎勵，可能已被刪除");
-    if (!item.reward_used_at) throw new HttpError(409, "這個獎勵本來就未使用");
+    if (!item || !item.reward) throw new HttpError(404, "找不到这个奖励，可能已被删除");
+    if (!item.reward_used_at) throw new HttpError(409, "这个奖励本来就未使用");
     await query(
       `UPDATE sng_results SET reward_used_at = NULL, reward_used_by = NULL WHERE game_id = $1 AND place = $2`,
       [gameId, place]
     );
-    const gameLabel = item.title || `第 ${gameId} 場`;
+    const gameLabel = item.title || `第 ${gameId} 场`;
     await log(query, {
       action: "reward_undo",
       board: "sng",
@@ -699,14 +699,14 @@ async function undoReward(req: Request, admin: Admin) {
 async function deleteSngGame(admin: Admin, id: number) {
   await tx(async (query) => {
     const [game] = await query(`SELECT * FROM sng_games WHERE id = $1 FOR UPDATE`, [id]);
-    if (!game) throw new HttpError(404, "找不到這場賽果，可能已被刪除");
+    if (!game) throw new HttpError(404, "找不到这场赛果，可能已被删除");
     const results = await query(
       `SELECT r.place, r.reward, r.reward_used_at, p.id, p.name, p.phone FROM sng_results r JOIN players p ON p.id = r.player_id
         WHERE r.game_id = $1 ORDER BY r.place`,
       [id]
     );
     await query(`DELETE FROM sng_games WHERE id = $1`, [id]);
-    const gameLabel = game.title || `第 ${game.id} 場`;
+    const gameLabel = game.title || `第 ${game.id} 场`;
     for (const r of results) {
       await log(query, {
         action: "sng_delete",
@@ -715,8 +715,8 @@ async function deleteSngGame(admin: Admin, id: number) {
         playerId: r.id,
         playerName: r.name,
         playerPhone: r.phone,
-        detail: `刪除 ${gameLabel} ${PLACE_LABEL[r.place]}${
-          r.reward ? `（獎勵：${r.reward}${r.reward_used_at ? "，已使用" : "，未使用"}）` : ""
+        detail: `删除 ${gameLabel} ${PLACE_LABEL[r.place]}${
+          r.reward ? `（奖励：${r.reward}${r.reward_used_at ? "，已使用" : "，未使用"}）` : ""
         }`,
       });
     }
@@ -734,7 +734,7 @@ async function deleteSngGame(admin: Admin, id: number) {
 async function importPlayers(req: Request, admin: Admin) {
   const body = await readJson(req);
   const list = Array.isArray(body.players) ? body.players.slice(0, 2000) : [];
-  if (!list.length) throw new HttpError(400, "沒有可匯入的玩家");
+  if (!list.length) throw new HttpError(400, "没有可汇入的玩家");
   const result = await tx(async (query) => {
     let imported = 0;
     const skipped: string[] = [];
@@ -743,7 +743,7 @@ async function importPlayers(req: Request, admin: Admin) {
       try {
         p = validPlayer(item as Record<string, unknown>);
       } catch {
-        skipped.push(String((item as any)?.name ?? "（資料不完整）"));
+        skipped.push(String((item as any)?.name ?? "（资料不完整）"));
         continue;
       }
       const createdAt = Number((item as any).createdAt) || Date.parse((item as any).createdAt) || null;
@@ -773,7 +773,7 @@ async function importPlayers(req: Request, admin: Admin) {
         delta: p.points,
         before: 0,
         after: p.points,
-        detail: "從瀏覽器舊資料匯入",
+        detail: "从浏览器旧资料汇入",
       });
     }
     return { imported, skipped };
@@ -798,7 +798,7 @@ async function listLogs(url: URL) {
 
 async function updateSettings(req: Request, admin: Admin) {
   const body = await readJson(req);
-  const title = String(body.title ?? "").trim().slice(0, 60) || "撲克積分排行榜";
+  const title = String(body.title ?? "").trim().slice(0, 60) || "扑克积分排行榜";
   await tx(async (query) => {
     const [old] = await query(`SELECT value FROM settings WHERE key = 'title'`);
     if (old?.value === title) return;
@@ -837,23 +837,23 @@ async function createAdmin(req: Request, admin: Admin) {
   const passwordHash = hashPassword(password);
   const created = await tx(async (query) => {
     const exists = await query(`SELECT 1 FROM admins WHERE LOWER(username) = LOWER($1)`, [username]);
-    if (exists.length) throw new HttpError(409, "這個帳號名稱已被使用");
+    if (exists.length) throw new HttpError(409, "这个帐号名称已被使用");
     const [row] = await query(
       `INSERT INTO admins (username, password_hash) VALUES ($1, $2) RETURNING id, username, created_at`,
       [username, passwordHash]
     );
-    await log(query, { action: "admin_create", admin: admin.username, detail: `新增管理員 ${username}` });
+    await log(query, { action: "admin_create", admin: admin.username, detail: `新增管理员 ${username}` });
     return row;
   });
   return json({ admin: { id: created.id, username: created.username, createdAt: created.created_at } }, 201);
 }
 
 async function deleteAdmin(admin: Admin, id: number) {
-  if (id === admin.id) throw new HttpError(400, "不可以刪除自己正在使用的帳號");
+  if (id === admin.id) throw new HttpError(400, "不可以删除自己正在使用的帐号");
   await tx(async (query) => {
     const [row] = await query(`DELETE FROM admins WHERE id = $1 RETURNING username`, [id]);
-    if (!row) throw new HttpError(404, "找不到這個管理員");
-    await log(query, { action: "admin_delete", admin: admin.username, detail: `刪除管理員 ${row.username}` });
+    if (!row) throw new HttpError(404, "找不到这个管理员");
+    await log(query, { action: "admin_delete", admin: admin.username, detail: `删除管理员 ${row.username}` });
   });
   return json({ ok: true });
 }
@@ -864,14 +864,14 @@ async function changePassword(req: Request, admin: Admin) {
   const next = validPassword(body.newPassword);
   const [row] = await q(`SELECT password_hash FROM admins WHERE id = $1`, [admin.id]);
   if (!row || !verifyPassword(current, row.password_hash)) {
-    throw new HttpError(400, "目前密碼不正確");
+    throw new HttpError(400, "目前密码不正确");
   }
   const token = getCookie(req, SESSION_COOKIE) || "";
   await tx(async (query) => {
     await query(`UPDATE admins SET password_hash = $1 WHERE id = $2`, [hashPassword(next), admin.id]);
     // Sign out this admin's other devices
     await query(`DELETE FROM sessions WHERE admin_id = $1 AND token_hash <> $2`, [admin.id, sha256(token)]);
-    await log(query, { action: "password_change", admin: admin.username, detail: "修改自己的密碼" });
+    await log(query, { action: "password_change", admin: admin.username, detail: "修改自己的密码" });
   });
   return json({ ok: true });
 }
@@ -886,7 +886,7 @@ async function board() {
   const [{ count }] = await q(`SELECT COUNT(*)::int AS count FROM sng_games`);
   const [setting] = await q(`SELECT value FROM settings WHERE key = 'title'`);
   return json({
-    title: setting?.value ?? "撲克積分排行榜",
+    title: setting?.value ?? "扑克积分排行榜",
     players: rows.map((r) => ({
       id: r.id,
       name: r.name,
@@ -917,7 +917,7 @@ export default async (req: Request, _context: Context) => {
 
   try {
     if (method !== "GET" && !(req.headers.get("content-type") || "").includes("application/json")) {
-      throw new HttpError(415, "請求格式不正確");
+      throw new HttpError(415, "请求格式不正确");
     }
 
     // Public routes
@@ -929,7 +929,7 @@ export default async (req: Request, _context: Context) => {
 
     // Everything below requires an admin session
     const admin = await currentAdmin(req);
-    if (!admin) throw new HttpError(401, "登入已過期，請重新登入");
+    if (!admin) throw new HttpError(401, "登入已过期，请重新登入");
 
     if (seg[0] === "players") {
       if (seg.length === 1 && method === "GET") return await listPlayers();
@@ -963,12 +963,12 @@ export default async (req: Request, _context: Context) => {
       if (seg.length === 2 && method === "DELETE") return await deleteAdmin(admin, validId(seg[1]));
     }
 
-    throw new HttpError(404, "找不到這個功能");
+    throw new HttpError(404, "找不到这个功能");
   } catch (e) {
     if (e instanceof HttpError) return json({ error: e.message }, e.status);
-    if ((e as any)?.code === "23505") return json({ error: "資料重複，請檢查手機號或帳號名稱" }, 409);
+    if ((e as any)?.code === "23505") return json({ error: "资料重复，请检查手机号或帐号名称" }, 409);
     console.error(e);
-    return json({ error: "伺服器發生錯誤，請稍後再試" }, 500);
+    return json({ error: "伺服器发生错误，请稍后再试" }, 500);
   }
 };
 

@@ -36,7 +36,7 @@ export default function AdminsTab({ admin, call, flash }) {
     try {
       const r = await call("/admins", { method: "POST", body: form });
       setForm({ username: "", password: "" });
-      flash(`已新增管理員 ${r.admin.username}`);
+      flash(`已新增管理员 ${r.admin.username}`);
       load();
     } catch (e) {
       setFormError(e.message);
@@ -48,7 +48,7 @@ export default function AdminsTab({ admin, call, flash }) {
   const removeAdmin = async (a) => {
     try {
       await call(`/admins/${a.id}`, { method: "DELETE" });
-      flash(`已刪除管理員 ${a.username}`);
+      flash(`已删除管理员 ${a.username}`);
       setConfirmId(null);
       load();
     } catch (e) {
@@ -59,7 +59,7 @@ export default function AdminsTab({ admin, call, flash }) {
   const changePassword = async () => {
     if (pwBusy) return;
     setPwError("");
-    if (pw.newPassword !== pw.confirm) return setPwError("兩次輸入的新密碼不一樣");
+    if (pw.newPassword !== pw.confirm) return setPwError("两次输入的新密码不一样");
     setPwBusy(true);
     try {
       await call("/admins/me/password", {
@@ -67,7 +67,7 @@ export default function AdminsTab({ admin, call, flash }) {
         body: { currentPassword: pw.currentPassword, newPassword: pw.newPassword },
       });
       setPw({ currentPassword: "", newPassword: "", confirm: "" });
-      flash("已修改密碼，其他裝置需要重新登入");
+      flash("已修改密码，其他装置需要重新登入");
     } catch (e) {
       setPwError(e.message);
     } finally {
@@ -84,10 +84,10 @@ export default function AdminsTab({ admin, call, flash }) {
       >
         <div className="p-4 border-b" style={{ borderColor: C.line }}>
           <h2 id="admins-heading" className="text-lg font-bold">
-            管理員帳號
+            管理员帐号
           </h2>
           <p className="text-xs" style={{ color: C.muted }}>
-            所有管理員都可以修改積分和新增其他管理員。
+            所有管理员都可以修改积分和新增其他管理员。
           </p>
         </div>
         {error ? (
@@ -96,7 +96,7 @@ export default function AdminsTab({ admin, call, flash }) {
           </p>
         ) : loading ? (
           <p className="p-8 text-center text-sm" style={{ color: C.muted }}>
-            載入中…
+            载入中…
           </p>
         ) : (
           <ul>
@@ -117,15 +117,15 @@ export default function AdminsTab({ admin, call, flash }) {
                   </div>
                   <div className="text-xs flex flex-wrap gap-x-3" style={{ color: C.muted }}>
                     <span>建立 {fmtDateTime(a.createdAt)}</span>
-                    <span>最後登入 {fmtDateTime(a.lastLoginAt)}</span>
+                    <span>最后登入 {fmtDateTime(a.lastLoginAt)}</span>
                   </div>
                 </div>
                 {a.id !== admin.id &&
                   (confirmId === a.id ? (
                     <div className="flex items-center gap-2">
-                      <span className="text-sm">刪除 {a.username}？</span>
+                      <span className="text-sm">删除 {a.username}？</span>
                       <button className={btnPrimary} style={{ background: C.red }} onClick={() => removeAdmin(a)}>
-                        刪除
+                        删除
                       </button>
                       <button
                         className={btnSecondary}
@@ -137,7 +137,7 @@ export default function AdminsTab({ admin, call, flash }) {
                     </div>
                   ) : (
                     <button className={btnRow} style={{ color: C.red }} onClick={() => setConfirmId(a.id)}>
-                      刪除
+                      删除
                     </button>
                   ))}
               </li>
@@ -149,12 +149,12 @@ export default function AdminsTab({ admin, call, flash }) {
       <div className="flex flex-col gap-6">
         <section className="bg-white rounded-lg border p-5" style={{ borderColor: C.line }} aria-labelledby="new-admin">
           <h2 id="new-admin" className="text-lg font-bold mb-4">
-            新增管理員
+            新增管理员
           </h2>
           <div className="flex flex-col gap-3">
             <div>
               <label htmlFor="na-u" className="block text-sm font-medium mb-1">
-                帳號
+                帐号
               </label>
               <input
                 id="na-u"
@@ -169,7 +169,7 @@ export default function AdminsTab({ admin, call, flash }) {
             </div>
             <div>
               <label htmlFor="na-p" className="block text-sm font-medium mb-1">
-                初始密碼
+                初始密码
               </label>
               <input
                 id="na-p"
@@ -182,7 +182,7 @@ export default function AdminsTab({ admin, call, flash }) {
                 onKeyDown={(e) => isEnter(e) && addAdmin()}
               />
               <p className="text-xs mt-1" style={{ color: C.muted }}>
-                最少 8 個字元。對方登入後可以自行修改。
+                最少 8 个字元。对方登入后可以自行修改。
               </p>
             </div>
           </div>
@@ -197,19 +197,19 @@ export default function AdminsTab({ admin, call, flash }) {
             onClick={addAdmin}
             disabled={busy}
           >
-            {busy ? "新增中…" : "新增管理員"}
+            {busy ? "新增中…" : "新增管理员"}
           </button>
         </section>
 
         <section className="bg-white rounded-lg border p-5" style={{ borderColor: C.line }} aria-labelledby="change-pw">
           <h2 id="change-pw" className="text-lg font-bold mb-4">
-            修改我的密碼
+            修改我的密码
           </h2>
           <div className="flex flex-col gap-3">
             {[
-              ["currentPassword", "目前密碼", "current-password"],
-              ["newPassword", "新密碼", "new-password"],
-              ["confirm", "再輸入一次新密碼", "new-password"],
+              ["currentPassword", "目前密码", "current-password"],
+              ["newPassword", "新密码", "new-password"],
+              ["confirm", "再输入一次新密码", "new-password"],
             ].map(([key, label, ac]) => (
               <div key={key}>
                 <label htmlFor={`pw-${key}`} className="block text-sm font-medium mb-1">
@@ -239,7 +239,7 @@ export default function AdminsTab({ admin, call, flash }) {
             onClick={changePassword}
             disabled={pwBusy}
           >
-            {pwBusy ? "儲存中…" : "修改密碼"}
+            {pwBusy ? "储存中…" : "修改密码"}
           </button>
         </section>
       </div>

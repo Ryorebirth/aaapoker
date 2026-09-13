@@ -107,7 +107,7 @@ function buildImage({ title, subtitle, rows: allRows, columns, note }) {
   ctx.fillStyle = C.muted;
   ctx.font = `22px ${FONT}`;
   const fullNote =
-    allRows.length > LIMIT ? `${note}。圖片只顯示前 ${LIMIT} 名，完整名單請匯出 Excel。` : note;
+    allRows.length > LIMIT ? `${note}。图片只显示前 ${LIMIT} 名，完整名单请汇出 Excel。` : note;
   ctx.fillText(fullNote, pad, H - footH / 2);
 
   return cv.toDataURL("image/png");
@@ -117,14 +117,14 @@ export function buildRankingImage({ title, ranked, phoneOf }) {
   const pad = 56;
   return buildImage({
     title,
-    subtitle: "Cash Game",
+    subtitle: "常规赛",
     rows: ranked,
-    note: "積分相同並列同一名次",
+    note: "积分相同并列同一名次",
     columns: [
       { label: "姓名", x: pad + 100, max: 284, font: "bold 32px", value: (p) => p.name },
-      { label: "手機號", x: 470, max: 210, color: C.muted, value: phoneOf },
-      { label: "最後更新", x: 700, font: "24px", color: C.muted, value: (p) => fmtDate(p.updatedAt) },
-      { label: "積分", x: 1080 - pad, align: "right", font: "bold 36px", value: (p) => fmt(p.points) },
+      { label: "手机号", x: 470, max: 210, color: C.muted, value: phoneOf },
+      { label: "最后更新", x: 700, font: "24px", color: C.muted, value: (p) => fmtDate(p.updatedAt) },
+      { label: "积分", x: 1080 - pad, align: "right", font: "bold 36px", value: (p) => fmt(p.points) },
     ],
   });
 }
@@ -135,10 +135,10 @@ export function buildSngImage({ title, ranked, phoneOf }) {
     title,
     subtitle: "Sit and Go",
     rows: ranked,
-    note: "按第 1 名次數排名，相同時比較第 2 名、第 3 名次數",
+    note: "按第 1 名次数排名，相同时比较第 2 名、第 3 名次数",
     columns: [
       { label: "姓名", x: pad + 100, max: 300, font: "bold 32px", value: (p) => p.name },
-      { label: "手機號", x: 480, max: 220, color: C.muted, value: phoneOf },
+      { label: "手机号", x: 480, max: 220, color: C.muted, value: phoneOf },
       { label: "第1名", x: 770, align: "center", font: "bold 36px", value: (p) => p.firsts },
       { label: "第2名", x: 880, align: "center", font: "30px", value: (p) => p.seconds },
       { label: "第3名", x: 990, align: "center", font: "30px", value: (p) => p.thirds },

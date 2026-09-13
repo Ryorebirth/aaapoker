@@ -31,7 +31,7 @@ export async function readJson(req: Request): Promise<Record<string, unknown>> {
   } catch {
     // fall through
   }
-  throw new HttpError(400, "請求內容格式不正確");
+  throw new HttpError(400, "请求内容格式不正确");
 }
 
 // ---------- Cookies & sessions ----------
@@ -108,15 +108,15 @@ export function round2(n: number): number {
 export function validUsername(v: unknown): string {
   const s = String(v ?? "").trim();
   if (!/^[A-Za-z0-9_.-]{3,32}$/.test(s)) {
-    throw new HttpError(400, "帳號名稱需為 3 至 32 個英文字母、數字、底線、點或連字號");
+    throw new HttpError(400, "帐号名称需为 3 至 32 个英文字母、数字、底线、点或连字号");
   }
   return s;
 }
 
 export function validPassword(v: unknown): string {
   const s = String(v ?? "");
-  if (s.length < 8) throw new HttpError(400, "密碼最少需要 8 個字元");
-  if (s.length > 128) throw new HttpError(400, "密碼不可超過 128 個字元");
+  if (s.length < 8) throw new HttpError(400, "密码最少需要 8 个字元");
+  if (s.length > 128) throw new HttpError(400, "密码不可超过 128 个字元");
   return s;
 }
 
@@ -124,37 +124,37 @@ export function validPlayer(body: Record<string, unknown>) {
   const name = String(body.name ?? "").trim();
   const phone = String(body.phone ?? "").trim();
   const rawPoints = body.points;
-  if (!name) throw new HttpError(400, "請輸入姓名");
-  if (name.length > 50) throw new HttpError(400, "姓名不可超過 50 個字");
+  if (!name) throw new HttpError(400, "请输入姓名");
+  if (name.length > 50) throw new HttpError(400, "姓名不可超过 50 个字");
   if (!/^\+?[\d\s-]{6,20}$/.test(phone)) {
-    throw new HttpError(400, "手機號格式不正確，只可包含數字、空格、+ 或 -");
+    throw new HttpError(400, "手机号格式不正确，只可包含数字、空格、+ 或 -");
   }
   const points = rawPoints === "" || rawPoints === undefined || rawPoints === null ? 0 : Number(rawPoints);
-  if (!Number.isFinite(points) || Math.abs(points) >= 1e11) throw new HttpError(400, "積分必須是數字");
+  if (!Number.isFinite(points) || Math.abs(points) >= 1e11) throw new HttpError(400, "积分必须是数字");
   return { name, phone, phoneNormalized: normPhone(phone), points: round2(points) };
 }
 
 export function validDelta(v: unknown): number {
   const n = Number(v);
-  if (!Number.isFinite(n) || n === 0 || Math.abs(n) >= 1e11) throw new HttpError(400, "請輸入不是 0 的分數");
+  if (!Number.isFinite(n) || n === 0 || Math.abs(n) >= 1e11) throw new HttpError(400, "请输入不是 0 的分数");
   return round2(n);
 }
 
 export function validId(v: string | undefined): number {
   const n = Number(v);
-  if (!Number.isInteger(n) || n <= 0) throw new HttpError(404, "找不到這筆資料");
+  if (!Number.isInteger(n) || n <= 0) throw new HttpError(404, "找不到这笔资料");
   return n;
 }
 
 // ---------- Sit and Go rewards ----------
 
-export const REWARD_OPTIONS = ["盲盒", "20000積分", "10000積分"] as const;
+export const REWARD_OPTIONS = ["盲盒", "20000积分", "10000积分"] as const;
 
 export function validReward(v: unknown, label = ""): string | null {
   const s = String(v ?? "").trim();
   if (!s) return null;
   if (!(REWARD_OPTIONS as readonly string[]).includes(s)) {
-    throw new HttpError(400, `${label}獎勵只可以選擇：${REWARD_OPTIONS.join("、")}`);
+    throw new HttpError(400, `${label}奖励只可以选择：${REWARD_OPTIONS.join("、")}`);
   }
   return s;
 }

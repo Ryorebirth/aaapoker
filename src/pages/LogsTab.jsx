@@ -15,27 +15,27 @@ import {
 
 const ACTIONS = {
   create: "新增玩家",
-  adjust: "加減分",
-  edit: "修改資料",
-  delete: "刪除玩家",
-  import: "匯入玩家",
-  title_change: "修改名稱",
+  adjust: "加减分",
+  edit: "修改资料",
+  delete: "删除玩家",
+  import: "汇入玩家",
+  title_change: "修改名称",
   login: "登入",
-  admin_create: "新增管理員",
-  admin_delete: "刪除管理員",
-  password_change: "修改密碼",
-  sng_result: "記錄賽果",
-  sng_delete: "刪除賽果",
-  sng_reward: "修改獎勵",
-  reward_use: "使用獎勵",
-  reward_undo: "取消使用獎勵",
+  admin_create: "新增管理员",
+  admin_delete: "删除管理员",
+  password_change: "修改密码",
+  sng_result: "记录赛果",
+  sng_delete: "删除赛果",
+  sng_reward: "修改奖励",
+  reward_use: "使用奖励",
+  reward_undo: "取消使用奖励",
 };
 
 const FILTERS = [
   ["all", "全部"],
-  ["cash", "Cash Game"],
+  ["cash", "常规赛"],
   ["sng", "Sit and Go"],
-  ["admin", "帳號"],
+  ["admin", "帐号"],
 ];
 
 function describe(l) {
@@ -43,7 +43,7 @@ function describe(l) {
   if (l.action === "adjust" || l.action === "create" || l.action === "import") {
     if (l.delta !== null) parts.push(`${signed(l.delta)} 分`);
   }
-  if (l.action === "delete" && l.pointsBefore !== null) parts.push(`刪除前 ${fmt(l.pointsBefore)} 分`);
+  if (l.action === "delete" && l.pointsBefore !== null) parts.push(`删除前 ${fmt(l.pointsBefore)} 分`);
   if (l.detail) parts.push(l.detail);
   return parts.join("　");
 }
@@ -90,12 +90,12 @@ export default function LogsTab({ call, title }) {
 
   const exportLogs = () =>
     downloadCSV(
-      `${safeName(title)}_修改紀錄_${today()}.csv`,
-      ["時間", "管理員", "計分器", "動作", "玩家", "手機號", "分數變化", "修改前積分", "修改後積分", "備註"],
+      `${safeName(title)}_修改纪录_${today()}.csv`,
+      ["时间", "管理员", "计分器", "动作", "玩家", "手机号", "分数变化", "修改前积分", "修改后积分", "备注"],
       shown.map((l) => [
         fmtDateTime(l.createdAt),
         l.adminUsername,
-        l.board === "cash" ? "Cash Game" : l.board === "sng" ? "Sit and Go" : "",
+        l.board === "cash" ? "常规赛" : l.board === "sng" ? "Sit and Go" : "",
         ACTIONS[l.action] || l.action,
         l.playerName || "",
         l.playerPhone ? `="${l.playerPhone}"` : "",
@@ -112,10 +112,10 @@ export default function LogsTab({ call, title }) {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 id="logs-heading" className="text-lg font-bold">
-              修改紀錄
+              修改纪录
             </h2>
             <p className="text-xs" style={{ color: C.muted }}>
-              Cash Game 和 Sit and Go 的每次修改都會記錄管理員和時間。顯示最近 {limit} 筆。
+              常规赛 和 Sit and Go 的每次修改都会记录管理员和时间。显示最近 {limit} 笔。
             </p>
           </div>
           <div className="flex gap-2">
@@ -125,7 +125,7 @@ export default function LogsTab({ call, title }) {
               onClick={load}
               disabled={loading}
             >
-              {loading ? "載入中…" : "重新整理"}
+              {loading ? "载入中…" : "重新整理"}
             </button>
             <button
               className={btnPrimary}
@@ -133,7 +133,7 @@ export default function LogsTab({ call, title }) {
               onClick={exportLogs}
               disabled={!shown.length}
             >
-              匯出紀錄
+              汇出纪录
             </button>
           </div>
         </div>
@@ -143,8 +143,8 @@ export default function LogsTab({ call, title }) {
             style={{ borderColor: C.line, minWidth: 180 }}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="搜尋玩家、手機號、管理員或備註"
-            aria-label="搜尋紀錄"
+            placeholder="搜寻玩家、手机号、管理员或备注"
+            aria-label="搜寻纪录"
           />
           <div className="flex rounded-md border overflow-hidden" style={{ borderColor: C.line }} role="group">
             {FILTERS.map(([key, label]) => (
@@ -171,11 +171,11 @@ export default function LogsTab({ call, title }) {
         </p>
       ) : loading && !logs.length ? (
         <p className="p-8 text-center text-sm" style={{ color: C.muted }}>
-          載入中…
+          载入中…
         </p>
       ) : !shown.length ? (
         <p className="p-8 text-center text-sm" style={{ color: C.muted }}>
-          {logs.length ? "沒有符合條件的紀錄" : "還沒有任何紀錄"}
+          {logs.length ? "没有符合条件的纪录" : "还没有任何纪录"}
         </p>
       ) : (
         <ul>

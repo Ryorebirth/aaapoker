@@ -16,9 +16,9 @@ export const C = {
 export const CHIP = { 1: "#9A7420", 2: "#6E7A80", 3: "#8C5530" };
 
 export const FONT =
-  '"Noto Sans TC","PingFang TC","PingFang HK","Microsoft JhengHei","Heiti TC",system-ui,sans-serif';
+  '"Noto Sans SC","PingFang SC","Microsoft YaHei","Heiti SC","Noto Sans TC","PingFang HK",system-ui,sans-serif';
 
-export const DEFAULT_TITLE = "撲克積分排行榜";
+export const DEFAULT_TITLE = "扑克积分排行榜";
 
 export const normPhone = (p) => String(p).replace(/[\s-]/g, "");
 export const maskPhone = (p) => {
@@ -51,7 +51,7 @@ export const isEnter = (e) => e.key === "Enter" && !e.nativeEvent.isComposing &&
 // Competition ranking: equal points share a rank (1, 1, 3)
 export function rankPlayers(players) {
   const sorted = [...players].sort(
-    (a, b) => b.points - a.points || a.name.localeCompare(b.name, "zh-Hant")
+    (a, b) => b.points - a.points || a.name.localeCompare(b.name, "zh-CN")
   );
   let prevPts = null;
   let prevRank = 0;
@@ -121,7 +121,7 @@ export function rankSng(standings) {
       b.firsts - a.firsts ||
       b.seconds - a.seconds ||
       b.thirds - a.thirds ||
-      a.name.localeCompare(b.name, "zh-Hant")
+      a.name.localeCompare(b.name, "zh-CN")
   );
   let prev = null;
   let prevRank = 0;
@@ -134,7 +134,7 @@ export function rankSng(standings) {
   });
 }
 
-export const BOARD_NAMES = { cash: "Cash Game", sng: "Sit and Go" };
+export const BOARD_NAMES = { cash: "常规赛", sng: "Sit and Go" };
 
-export const REWARD_OPTIONS = ["盲盒", "20000積分", "10000積分"];
-export const DEFAULT_REWARD = { 1: "盲盒", 2: "20000積分", 3: "10000積分" };
+export const REWARD_OPTIONS = ["盲盒", "20000积分", "10000积分"];
+export const DEFAULT_REWARD = { 1: "盲盒", 2: "20000积分", 3: "10000积分" };
