@@ -24,6 +24,8 @@ const VIEWS = [
 const ROTATION = ["cash", "month", "year"];
 // A TV cannot scroll, so a long list is paged through at a steady size instead
 const PAGE_SECONDS = 10;
+// Nobody waits through ten pages, so a paged board stops after this many
+const MAX_PAGES = 3;
 // Three fixed layouts. Sizes never change while scrolling — only the device tier matters.
 const TIERS = {
   phone: {
@@ -71,12 +73,12 @@ const TIERS = {
     points: "text-3xl",
     bigPoints: "text-5xl",
     first: "text-4xl",
-    bigFirst: "text-8xl",
+    bigFirst: "text-7xl",
     other: "text-3xl",
-    bigOther: "text-6xl",
+    bigOther: "text-5xl",
     label: "text-sm",
     statWidth: 58,
-    bigStatWidth: 118,
+    bigStatWidth: 104,
     twoColumns: true,
     paged: true,
   },
@@ -291,38 +293,57 @@ function SngRow({ p, big, change, t }) {
  * Fixed-size list. Sizes never change; if the rows do not fit a TV screen the list
  * is split into pages that take turns, so nothing is ever cut off or shrunk.
  */
-function BoardList({ ranked, changes, RowComponent, bigCount, bigRank, tier, signature }) {
+function BoardList({ ranked, changes, RowComponent, bigCount, bigRank, tier, signature, paged }) {
   const t = TIERS[tier];
-  const paged = t.paged;
   const wrapRef = useRef(null);
   const innerRef = useRef(null);
-  const [perPage, setPerPage] = useState(ranked.length);
+  // The first page carries the large top rows, so it holds fewer players than the rest
+  const [caps, setCaps] = useState({ first: ranked.length, rest: ranked.length });
   const [page, setPage] = useState(0);
 
-  // Start again from "show everything" whenever the board or the device changes
   useLayoutEffect(() => {
-    setPerPage(ranked.length);
+    setCaps({ first: ranked.length, rest: ranked.length });
     setPage(0);
   }, [signature, ranked.length]);
 
-  // Shrink the page size, never the text, until the rows fit the screen
+  // Work out how many pages there are, given how much fits on the first and later pages
+  const firstCap = Math.max(1, caps.first);
+  const restCap = Math.max(1, caps.rest);
+  let pageCount = 1;
+  if (paged && ranked.length > firstCap) {
+    pageCount = Math.min(MAX_PAGES, 1 + Math.ceil((ranked.length - firstCap) / restCap));
+  }
+  const safePage = Math.min(page, pageCount - 1);
+  const shownTotal = paged ? Math.min(ranked.length, firstCap + restCap * (pageCount - 1)) : ranked.length;
+  const hidden = ranked.length - shownTotal;
+
+  const pageStart = safePage === 0 ? 0 : firstCap + (safePage - 1) * restCap;
+  const pageSize = safePage === 0 ? firstCap : restCap;
+  const visible = paged ? ranked.slice(pageStart, Math.min(pageStart + pageSize, shownTotal)) : ranked;
+
+  // Shrink how many rows a page holds — never the text — until the page fits the screen
   useLayoutEffect(() => {
     if (!paged) return;
     const wrap = wrapRef.current;
     const inner = innerRef.current;
     if (!wrap || !inner) return;
     const available = window.innerHeight - wrap.getBoundingClientRect().top - 24;
-    if (inner.scrollHeight > available && perPage > 3) {
-      const ratio = available / inner.scrollHeight;
-      setPerPage((n) => Math.max(3, Math.min(n - 1, Math.floor(n * ratio))));
-    }
+    if (inner.scrollHeight <= available) return;
+    const key = safePage === 0 ? "first" : "rest";
+    const current = caps[key];
+    if (current <= 2) return;
+    const ratio = available / inner.scrollHeight;
+    setCaps((prev) => ({
+      ...prev,
+      [key]: Math.max(2, Math.min(current - 1, Math.floor(current * ratio))),
+    }));
   });
 
-  // A screen size change starts the calculation over, so the page can also grow again
+  // A screen size change starts the calculation over, so pages can grow again too
   useEffect(() => {
     if (!paged) return;
     const onResize = () => {
-      setPerPage(ranked.length);
+      setCaps({ first: ranked.length, rest: ranked.length });
       setPage(0);
     };
     window.addEventListener("resize", onResize);
@@ -333,18 +354,14 @@ function BoardList({ ranked, changes, RowComponent, bigCount, bigRank, tier, sig
     };
   }, [paged, ranked.length]);
 
-  const pageCount = paged ? Math.max(1, Math.ceil(ranked.length / Math.max(perPage, 1))) : 1;
-
   useEffect(() => {
     if (pageCount < 2) return;
     const timer = setInterval(() => setPage((p) => (p + 1) % pageCount), PAGE_SECONDS * 1000);
     return () => clearInterval(timer);
   }, [pageCount]);
 
-  const safePage = Math.min(page, pageCount - 1);
-  const visible = paged ? ranked.slice(safePage * perPage, safePage * perPage + perPage) : ranked;
+  const allowBig = pageStart === 0;
   const twoColumns = t.twoColumns && visible.length >= TWO_COLUMN_FROM;
-  // bigCount rows at the top are shown double size; the rest stay compact
   const bigRows =
     bigCount === undefined ? (ranked.length <= BIG_ROW_LIMIT && !twoColumns ? visible.length : 0) : bigCount;
   const half = Math.ceil(visible.length / 2);
@@ -358,27 +375,32 @@ function BoardList({ ranked, changes, RowComponent, bigCount, bigRank, tier, sig
   return (
     <div ref={wrapRef}>
       <div ref={innerRef} className={twoColumns ? "flex" : ""}>
-          {columns.map((col, i) => (
-            <ol
-              key={i}
-              className={twoColumns ? "flex-1 min-w-0" : ""}
-              style={twoColumns && i === 0 ? { marginRight: 16 } : undefined}
-            >
-              {col.rows.map((p, j) => (
-                <RowComponent
-                  key={p.id}
-                  p={p}
-                  big={bigRank ? p.rank <= bigRank : col.offset + j < bigRows}
-                  change={changes[p.id]}
-                  t={t}
-                />
-              ))}
-            </ol>
-          ))}
+        {columns.map((col, i) => (
+          <ol
+            key={i}
+            className={twoColumns ? "flex-1 min-w-0" : ""}
+            style={twoColumns && i === 0 ? { marginRight: 16 } : undefined}
+          >
+            {col.rows.map((p, j) => (
+              <RowComponent
+                key={p.id}
+                p={p}
+                // Tied players look the same, but a big tie group cannot swallow the whole page
+                big={
+                  allowBig &&
+                  (bigRank ? p.rank <= bigRank && col.offset + j < bigRank + 2 : col.offset + j < bigRows)
+                }
+                change={changes[p.id]}
+                t={t}
+              />
+            ))}
+          </ol>
+        ))}
       </div>
-      {pageCount > 1 && (
+      {(pageCount > 1 || hidden > 0) && (
         <div className="text-sm mt-1" style={{ color: "rgba(255,255,255,0.55)" }}>
-          第 {safePage + 1} / {pageCount} 页　每 {PAGE_SECONDS} 秒自动翻页
+          {pageCount > 1 && `第 ${safePage + 1} / ${pageCount} 页　每 ${PAGE_SECONDS} 秒自动翻页`}
+          {hidden > 0 && `${pageCount > 1 ? "　" : ""}只显示前 ${shownTotal} 名`}
         </div>
       )}
     </div>
@@ -582,6 +604,8 @@ export default function BoardPage() {
             RowComponent={isSng ? SngRow : CashRow}
             bigRank={isSng ? SNG_BIG_ROWS : undefined}
             tier={tier}
+            // Sit and Go is paged on tablets too; the cash list only on a TV
+            paged={isSng ? tier !== "phone" : TIERS[tier].paged}
             signature={`${active}-${tier}`}
           />
         )}
