@@ -293,7 +293,7 @@ function SngRow({ p, big, change, t }) {
  * Fixed-size list. Sizes never change; if the rows do not fit a TV screen the list
  * is split into pages that take turns, so nothing is ever cut off or shrunk.
  */
-function BoardList({ ranked, changes, RowComponent, bigCount, bigRank, tier, signature, paged }) {
+function BoardList({ ranked, changes, RowComponent, bigCount, bigRank, tier, signature, paged, allowTwoColumns = true }) {
   const t = TIERS[tier];
   const wrapRef = useRef(null);
   const innerRef = useRef(null);
@@ -361,7 +361,7 @@ function BoardList({ ranked, changes, RowComponent, bigCount, bigRank, tier, sig
   }, [pageCount]);
 
   const allowBig = pageStart === 0;
-  const twoColumns = t.twoColumns && visible.length >= TWO_COLUMN_FROM;
+  const twoColumns = allowTwoColumns && t.twoColumns && visible.length >= TWO_COLUMN_FROM;
   const bigRows =
     bigCount === undefined ? (ranked.length <= BIG_ROW_LIMIT && !twoColumns ? visible.length : 0) : bigCount;
   const half = Math.ceil(visible.length / 2);
@@ -568,20 +568,25 @@ export default function BoardPage() {
           role="group"
           aria-label="选择排行榜"
         >
-          {VIEWS.map(([key, label]) => (
-            <button
-              key={key}
-              onClick={() => chooseView(key)}
-              aria-pressed={view === key}
-              className="px-2 sm:px-3 py-1 text-xs sm:text-sm font-semibold whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-yellow-600"
-              style={{
-                background: view === key ? C.brass : "transparent",
-                color: view === key ? C.ink : "rgba(255,255,255,0.8)",
-              }}
-            >
-              {label}
-            </button>
-          ))}
+          {VIEWS.map(([key, label]) => {
+            const onScreen = key === active; // what is showing right now
+            const chosen = key === view; // what the user picked (may be 轮流显示)
+            return (
+              <button
+                key={key}
+                onClick={() => chooseView(key)}
+                aria-pressed={chosen}
+                aria-current={onScreen ? "true" : undefined}
+                className="px-2 sm:px-3 py-1 text-xs sm:text-sm font-semibold whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-yellow-600"
+                style={{
+                  background: onScreen ? C.brass : chosen ? "rgba(201,162,74,0.35)" : "transparent",
+                  color: onScreen ? C.ink : "#fff",
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
 
         {!loaded ? (
@@ -606,6 +611,9 @@ export default function BoardPage() {
             tier={tier}
             // Sit and Go is paged on tablets too; the cash list only on a TV
             paged={isSng ? tier !== "phone" : TIERS[tier].paged}
+            // Sit and Go rows are wide, so they always stay in one column —
+            // that also keeps 月度 and 年度 looking exactly the same
+            allowTwoColumns={!isSng}
             signature={`${active}-${tier}`}
           />
         )}
