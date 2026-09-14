@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api.js";
 import RankMark from "../RankMark.jsx";
 import {
@@ -22,8 +22,71 @@ const VIEWS = [
   ["rotate", "轮流显示"],
 ];
 const ROTATION = ["cash", "month", "year"];
-// Two columns need room, so narrow phones always stay on a single column
-const TWO_COLUMN_MIN_WIDTH = 800;
+// A TV cannot scroll, so a long list is paged through at a steady size instead
+const PAGE_SECONDS = 10;
+// Three fixed layouts. Sizes never change while scrolling — only the device tier matters.
+const TIERS = {
+  phone: {
+    rowPad: "px-3 py-2",
+    bigRowPad: "px-3 py-3",
+    name: "text-base",
+    bigName: "text-2xl",
+    phone: "text-xs",
+    points: "text-xl",
+    bigPoints: "text-3xl",
+    first: "text-2xl",
+    bigFirst: "text-5xl",
+    other: "text-xl",
+    bigOther: "text-3xl",
+    label: "text-xs",
+    statWidth: 42,
+    bigStatWidth: 64,
+    twoColumns: false,
+    paged: false,
+  },
+  tablet: {
+    rowPad: "px-3 py-2",
+    bigRowPad: "px-4 py-3",
+    name: "text-lg",
+    bigName: "text-3xl",
+    phone: "text-sm",
+    points: "text-2xl",
+    bigPoints: "text-4xl",
+    first: "text-3xl",
+    bigFirst: "text-6xl",
+    other: "text-2xl",
+    bigOther: "text-4xl",
+    label: "text-xs",
+    statWidth: 50,
+    bigStatWidth: 92,
+    twoColumns: false,
+    paged: false,
+  },
+  tv: {
+    rowPad: "px-3 py-2",
+    bigRowPad: "px-4 py-3",
+    name: "text-xl",
+    bigName: "text-4xl",
+    phone: "text-sm",
+    points: "text-3xl",
+    bigPoints: "text-5xl",
+    first: "text-4xl",
+    bigFirst: "text-8xl",
+    other: "text-3xl",
+    bigOther: "text-6xl",
+    label: "text-sm",
+    statWidth: 58,
+    bigStatWidth: 118,
+    twoColumns: true,
+    paged: true,
+  },
+};
+
+function tierFor(width) {
+  if (width < 640) return "phone";
+  if (width < 1024) return "tablet";
+  return "tv";
+}
 
 // Below this many players the whole Cash Game list gets the large treatment
 const BIG_ROW_LIMIT = 6;
@@ -31,7 +94,6 @@ const BIG_ROW_LIMIT = 6;
 const SNG_BIG_ROWS = 4;
 // Two columns once the list gets long, so twice as many players fit on screen
 const TWO_COLUMN_FROM = 9;
-const MIN_SCALE = 0.4;
 
 /** 2026-09-01 -> 9月1日（year shown only when it is not the current year） */
 function periodLabel(date) {
@@ -49,14 +111,25 @@ function readView() {
   return ["cash", "month", "year", "rotate"].includes(v) ? v : "cash";
 }
 
-function useWindowWidth() {
-  const [width, setWidth] = useState(typeof window === "undefined" ? 1280 : window.innerWidth);
+/*
+ * Only the tier is kept in state, so the address bar appearing or disappearing
+ * while scrolling on a phone never changes any size on screen.
+ */
+function useTier() {
+  const [tier, setTier] = useState(() => tierFor(typeof window === "undefined" ? 1280 : window.innerWidth));
   useEffect(() => {
-    const onResize = () => setWidth(window.innerWidth);
+    const onResize = () => setTier((prev) => {
+      const next = tierFor(window.innerWidth);
+      return next === prev ? prev : next;
+    });
     window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onResize);
+    };
   }, []);
-  return width;
+  return tier;
 }
 
 // Track changes between polls so updated rows can be highlighted for a few seconds
@@ -143,21 +216,21 @@ function ChangeBadge({ change, big }) {
  * Spacing uses margins instead of flex `gap`, because the browser built into
  * older TVs does not support gap in flexbox and would render everything squashed.
  */
-function Row({ p, big, change, children, compact }) {
+function Row({ p, big, change, children, t }) {
   const highlight = change && (change.isNew || change.highlight);
-  const nameSize = compact ? (big ? "text-2xl" : "text-lg") : big ? "text-4xl" : "text-xl";
-  const phoneSize = compact ? "text-xs" : big ? "text-lg" : "text-sm";
   return (
     <li
-      className={`flex items-center rounded-lg ${big ? "px-4 py-3" : "px-3 py-2"} mb-2 transition-colors duration-700`}
+      className={`flex items-center rounded-lg ${big ? t.bigRowPad : t.rowPad} mb-2 transition-colors duration-700`}
       style={{ background: highlight ? "rgba(201,162,74,0.30)" : "rgba(255,255,255,0.06)" }}
     >
       <div className={big ? "mr-4" : "mr-3"}>
-        <RankMark rank={p.rank} size={big && !compact ? "lg" : "md"} dark />
+        <RankMark rank={p.rank} size={big ? "lg" : "md"} dark />
       </div>
       <div className="flex-1 min-w-0">
-        <div className={`${nameSize} font-bold text-white truncate leading-tight`}>{p.name}</div>
-        <div className={`${phoneSize} tabular-nums truncate`} style={{ color: "rgba(255,255,255,0.55)" }}>
+        <div className={`${big ? t.bigName : t.name} font-bold text-white truncate leading-tight`}>
+          {p.name}
+        </div>
+        <div className={`${t.phone} tabular-nums truncate`} style={{ color: "rgba(255,255,255,0.55)" }}>
           {p.phoneMasked}
         </div>
       </div>
@@ -167,11 +240,11 @@ function Row({ p, big, change, children, compact }) {
   );
 }
 
-function CashRow({ p, big, change }) {
+function CashRow({ p, big, change, t }) {
   return (
-    <Row p={p} big={big} change={change}>
+    <Row p={p} big={big} change={change} t={t}>
       <div
-        className={`${big ? "text-5xl" : "text-3xl"} font-bold tabular-nums text-white whitespace-nowrap ml-4 leading-none`}
+        className={`${big ? t.bigPoints : t.points} font-bold tabular-nums text-white whitespace-nowrap ml-4 leading-none`}
       >
         {fmt(p.points)}
       </div>
@@ -179,27 +252,21 @@ function CashRow({ p, big, change }) {
   );
 }
 
-function SngRow({ p, big, change, compact }) {
+function SngRow({ p, big, change, t }) {
   // The 1st-place count decides the ranking, so it is the largest number on the row
-  const stats = compact
-    ? [
-        ["第1名", p.firsts, big ? "text-5xl" : "text-3xl"],
-        ["第2名", p.seconds, big ? "text-4xl" : "text-2xl"],
-        ["第3名", p.thirds, big ? "text-4xl" : "text-2xl"],
-      ]
-    : [
-        ["第1名", p.firsts, big ? "text-8xl" : "text-4xl"],
-        ["第2名", p.seconds, big ? "text-6xl" : "text-3xl"],
-        ["第3名", p.thirds, big ? "text-6xl" : "text-3xl"],
-      ];
+  const stats = [
+    ["第1名", p.firsts, big ? t.bigFirst : t.first],
+    ["第2名", p.seconds, big ? t.bigOther : t.other],
+    ["第3名", p.thirds, big ? t.bigOther : t.other],
+  ];
   return (
-    <Row p={p} big={big} change={change} compact={compact}>
+    <Row p={p} big={big} change={change} t={t}>
       <div className="flex items-end tabular-nums ml-3">
         {stats.map(([label, n, size], i) => (
           <div
             key={label}
             className={i ? "text-center ml-4" : "text-center"}
-            style={{ minWidth: compact ? (big ? 70 : 48) : big ? 118 : 58 }}
+            style={{ minWidth: big ? t.bigStatWidth : t.statWidth }}
           >
             <div
               className={`${size} font-bold leading-none`}
@@ -208,7 +275,7 @@ function SngRow({ p, big, change, compact }) {
               {n}
             </div>
             <div
-              className={compact ? "text-xs mt-1" : big ? "text-lg mt-1" : "text-xs mt-1"}
+              className={`${t.label} mt-1`}
               style={{ color: "rgba(255,255,255,0.6)" }}
             >
               {label}
@@ -220,65 +287,77 @@ function SngRow({ p, big, change, compact }) {
   );
 }
 
-/** Shrinks its children until they fit the remaining screen height. */
-function AutoFit({ signature, children }) {
+/**
+ * Fixed-size list. Sizes never change; if the rows do not fit a TV screen the list
+ * is split into pages that take turns, so nothing is ever cut off or shrunk.
+ */
+function BoardList({ ranked, changes, RowComponent, bigCount, bigRank, tier, signature }) {
+  const t = TIERS[tier];
+  const paged = t.paged;
   const wrapRef = useRef(null);
   const innerRef = useRef(null);
-  const [scale, setScale] = useState(1);
+  const [perPage, setPerPage] = useState(ranked.length);
+  const [page, setPage] = useState(0);
 
-  const fit = useCallback(() => {
+  // Start again from "show everything" whenever the board or the device changes
+  useLayoutEffect(() => {
+    setPerPage(ranked.length);
+    setPage(0);
+  }, [signature, ranked.length]);
+
+  // Shrink the page size, never the text, until the rows fit the screen
+  useLayoutEffect(() => {
+    if (!paged) return;
     const wrap = wrapRef.current;
     const inner = innerRef.current;
     if (!wrap || !inner) return;
-    const available = window.innerHeight - wrap.getBoundingClientRect().top - 40;
-    const natural = inner.scrollHeight;
-    if (available <= 0 || natural <= 0) return;
-    const next = Math.min(1, Math.max(MIN_SCALE, available / natural));
-    setScale((prev) => (Math.abs(prev - next) > 0.01 ? next : prev));
-  }, []);
-
-  useLayoutEffect(() => {
-    setScale(1);
-  }, [signature]);
-
-  useLayoutEffect(() => {
-    fit();
+    const available = window.innerHeight - wrap.getBoundingClientRect().top - 24;
+    if (inner.scrollHeight > available && perPage > 3) {
+      const ratio = available / inner.scrollHeight;
+      setPerPage((n) => Math.max(3, Math.min(n - 1, Math.floor(n * ratio))));
+    }
   });
 
+  // A screen size change starts the calculation over, so the page can also grow again
   useEffect(() => {
-    window.addEventListener("resize", fit);
-    return () => window.removeEventListener("resize", fit);
-  }, [fit]);
+    if (!paged) return;
+    const onResize = () => {
+      setPerPage(ranked.length);
+      setPage(0);
+    };
+    window.addEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onResize);
+    };
+  }, [paged, ranked.length]);
 
-  return (
-    <div ref={wrapRef} style={{ overflow: "hidden" }}>
-      <div
-        ref={innerRef}
-        style={{ transform: `scale(${scale})`, transformOrigin: "top left", width: `${100 / scale}%` }}
-      >
-        {children}
-      </div>
-    </div>
-  );
-}
+  const pageCount = paged ? Math.max(1, Math.ceil(ranked.length / Math.max(perPage, 1))) : 1;
 
-/** Splits the list into one or two columns and shrinks it until everything fits the screen. */
-function AutoFitList({ ranked, changes, RowComponent, signature, bigCount, bigRank }) {
-  const width = useWindowWidth();
-  const twoColumns = ranked.length >= TWO_COLUMN_FROM && width >= TWO_COLUMN_MIN_WIDTH;
+  useEffect(() => {
+    if (pageCount < 2) return;
+    const timer = setInterval(() => setPage((p) => (p + 1) % pageCount), PAGE_SECONDS * 1000);
+    return () => clearInterval(timer);
+  }, [pageCount]);
+
+  const safePage = Math.min(page, pageCount - 1);
+  const visible = paged ? ranked.slice(safePage * perPage, safePage * perPage + perPage) : ranked;
+  const twoColumns = t.twoColumns && visible.length >= TWO_COLUMN_FROM;
   // bigCount rows at the top are shown double size; the rest stay compact
-  const bigRows = bigCount === undefined ? (ranked.length <= BIG_ROW_LIMIT && !twoColumns ? ranked.length : 0) : bigCount;
-  const half = Math.ceil(ranked.length / 2);
+  const bigRows =
+    bigCount === undefined ? (ranked.length <= BIG_ROW_LIMIT && !twoColumns ? visible.length : 0) : bigCount;
+  const half = Math.ceil(visible.length / 2);
   const columns = twoColumns
     ? [
-        { rows: ranked.slice(0, half), offset: 0 },
-        { rows: ranked.slice(half), offset: half },
+        { rows: visible.slice(0, half), offset: 0 },
+        { rows: visible.slice(half), offset: half },
       ]
-    : [{ rows: ranked, offset: 0 }];
+    : [{ rows: visible, offset: 0 }];
 
   return (
-    <AutoFit signature={signature}>
-      <div className={twoColumns ? "flex" : ""}>
+    <div ref={wrapRef}>
+      <div ref={innerRef} className={twoColumns ? "flex" : ""}>
           {columns.map((col, i) => (
             <ol
               key={i}
@@ -291,12 +370,18 @@ function AutoFitList({ ranked, changes, RowComponent, signature, bigCount, bigRa
                   p={p}
                   big={bigRank ? p.rank <= bigRank : col.offset + j < bigRows}
                   change={changes[p.id]}
+                  t={t}
                 />
               ))}
             </ol>
           ))}
       </div>
-    </AutoFit>
+      {pageCount > 1 && (
+        <div className="text-sm mt-1" style={{ color: "rgba(255,255,255,0.55)" }}>
+          第 {safePage + 1} / {pageCount} 页　每 {PAGE_SECONDS} 秒自动翻页
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -316,6 +401,7 @@ export default function BoardPage() {
   const [now, setNow] = useState(new Date());
   const [notice, setNotice] = useState("");
   const rootRef = useRef(null);
+  const tier = useTier();
 
   useEffect(() => {
     let stopped = false;
@@ -406,7 +492,7 @@ export default function BoardPage() {
   return (
     <div
       ref={rootRef}
-      className="min-h-screen overflow-hidden"
+      className="min-h-screen"
       style={{ background: C.feltDeep, fontFamily: FONT }}
     >
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4">
@@ -490,12 +576,13 @@ export default function BoardPage() {
             </p>
           </div>
         ) : (
-          <AutoFitList
+          <BoardList
             ranked={ranked}
             changes={isSng ? (isYear ? yearChanges : monthChanges) : cashChanges}
             RowComponent={isSng ? SngRow : CashRow}
             bigRank={isSng ? SNG_BIG_ROWS : undefined}
-            signature={`${active}-${ranked.length}`}
+            tier={tier}
+            signature={`${active}-${tier}`}
           />
         )}
       </div>
