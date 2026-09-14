@@ -17,9 +17,13 @@ import {
 const ROTATE_SECONDS = 20;
 const VIEWS = [
   ["cash", "常规赛"],
-  ["sng", "Sit and Go"],
+  ["month", "月度"],
+  ["year", "年度"],
   ["rotate", "轮流显示"],
 ];
+const ROTATION = ["cash", "month", "year"];
+// Two columns need room, so narrow phones always stay on a single column
+const TWO_COLUMN_MIN_WIDTH = 800;
 
 // Below this many players the whole Cash Game list gets the large treatment
 const BIG_ROW_LIMIT = 6;
@@ -39,7 +43,20 @@ function periodLabel(date) {
 
 function readView() {
   const v = new URLSearchParams(window.location.search).get("show");
-  return ["cash", "sng", "rotate"].includes(v) ? v : "cash";
+  // "sng" is what older links and the TV app send; it now means the monthly board
+  if (v === "sng" || v === "sng-month") return "month";
+  if (v === "sng-year") return "year";
+  return ["cash", "month", "year", "rotate"].includes(v) ? v : "cash";
+}
+
+function useWindowWidth() {
+  const [width, setWidth] = useState(typeof window === "undefined" ? 1280 : window.innerWidth);
+  useEffect(() => {
+    const onResize = () => setWidth(window.innerWidth);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  return width;
 }
 
 // Track changes between polls so updated rows can be highlighted for a few seconds
@@ -245,36 +262,10 @@ function AutoFit({ signature, children }) {
   );
 }
 
-/** One period's Sit and Go table: heading plus its rows. */
-function SngPanel({ label, period, rows, changes, bigRank }) {
-  return (
-    <div className="flex-1 min-w-0">
-      <div className="mb-2">
-        <div className="text-2xl font-bold" style={{ color: C.brass }}>
-          {label}
-        </div>
-        <div className="text-sm" style={{ color: "rgba(255,255,255,0.6)" }}>
-          {period}
-        </div>
-      </div>
-      {rows.length === 0 ? (
-        <p className="py-8 text-center text-sm" style={{ color: "rgba(255,255,255,0.6)" }}>
-          这一期还没有赛果
-        </p>
-      ) : (
-        <ol>
-          {rows.map((p) => (
-            <SngRow key={p.id} p={p} big={p.rank <= bigRank} change={changes[p.id]} compact />
-          ))}
-        </ol>
-      )}
-    </div>
-  );
-}
-
 /** Splits the list into one or two columns and shrinks it until everything fits the screen. */
 function AutoFitList({ ranked, changes, RowComponent, signature, bigCount, bigRank }) {
-  const twoColumns = ranked.length >= TWO_COLUMN_FROM;
+  const width = useWindowWidth();
+  const twoColumns = ranked.length >= TWO_COLUMN_FROM && width >= TWO_COLUMN_MIN_WIDTH;
   // bigCount rows at the top are shown double size; the rest stay compact
   const bigRows = bigCount === undefined ? (ranked.length <= BIG_ROW_LIMIT && !twoColumns ? ranked.length : 0) : bigCount;
   const half = Math.ceil(ranked.length / 2);
@@ -361,7 +352,10 @@ export default function BoardPage() {
 
   useEffect(() => {
     if (view !== "rotate") return;
-    const t = setInterval(() => setRotating((r) => (r === "cash" ? "sng" : "cash")), ROTATE_SECONDS * 1000);
+    const t = setInterval(
+      () => setRotating((r) => ROTATION[(ROTATION.indexOf(r) + 1) % ROTATION.length]),
+      ROTATE_SECONDS * 1000
+    );
     return () => clearInterval(t);
   }, [view]);
 
@@ -385,12 +379,15 @@ export default function BoardPage() {
   const yearChanges = useChanges(yearRanked, loaded, sngDiff);
 
   const active = view === "rotate" ? rotating : view;
-  const isSng = active === "sng";
-  const ranked = isSng ? monthRanked : cashRanked;
+  const isSng = active === "month" || active === "year";
+  const isYear = active === "year";
+  const ranked = isSng ? (isYear ? yearRanked : monthRanked) : cashRanked;
   const periods = data.periods;
+  const periodStart = periods ? (isYear ? periods.yearStart : periods.monthStart) : null;
+  const periodGames = periods ? (isYear ? periods.yearGames : periods.monthGames) : 0;
 
   const lastUpdate = isSng
-    ? data.sngYear.reduce((m, p) => Math.max(m, new Date(p.lastAt).getTime() || 0), 0)
+    ? ranked.reduce((m, p) => Math.max(m, new Date(p.lastAt).getTime() || 0), 0)
     : data.players.reduce((m, p) => Math.max(m, new Date(p.updatedAt).getTime() || 0), 0);
 
   const goFullscreen = async () => {
@@ -429,15 +426,13 @@ export default function BoardPage() {
                 />
                 {syncOk ? "即时更新中" : "连线中断，正在重试"}
               </span>
-              <span className="mr-4">
-                {isSng ? `月度 ${monthRanked.length} 人・年度 ${yearRanked.length} 人` : `${ranked.length} 位玩家`}
-              </span>
-              {isSng && periods && (
+              <span className="mr-4">{ranked.length} 位玩家</span>
+              {isSng && periodStart && (
                 <span className="mr-4">
-                  月度 {periods.monthGames} 场・年度 {periods.yearGames} 场
+                  {periodLabel(periodStart)}起　{periodGames} 场
                 </span>
               )}
-              <span className="mr-4">最后更新 {fmtDateTime(lastUpdate || null)}</span>
+              <span className="mr-4 hidden sm:inline">最后更新 {fmtDateTime(lastUpdate || null)}</span>
             </div>
           </div>
           <div className="text-right shrink-0 ml-4">
@@ -460,7 +455,7 @@ export default function BoardPage() {
         </div>
 
         <div
-          className="inline-flex rounded-md overflow-hidden border mb-3"
+          className="inline-flex rounded-md overflow-hidden border mb-3 max-w-full"
           style={{ borderColor: "rgba(255,255,255,0.25)" }}
           role="group"
           aria-label="选择排行榜"
@@ -470,7 +465,7 @@ export default function BoardPage() {
               key={key}
               onClick={() => chooseView(key)}
               aria-pressed={view === key}
-              className="px-3 py-1 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-yellow-600"
+              className="px-2 sm:px-3 py-1 text-xs sm:text-sm font-semibold whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-yellow-600"
               style={{
                 background: view === key ? C.brass : "transparent",
                 color: view === key ? C.ink : "rgba(255,255,255,0.8)",
@@ -485,47 +480,22 @@ export default function BoardPage() {
           <p className="py-20 text-center" style={{ color: "rgba(255,255,255,0.7)" }}>
             载入中…
           </p>
-        ) : isSng ? (
-          monthRanked.length === 0 && yearRanked.length === 0 ? (
-            <div className="py-20 text-center" style={{ color: "rgba(255,255,255,0.7)" }}>
-              <p className="text-xl font-semibold text-white mb-2">还没有赛果</p>
-              <p>管理员记录 Sit and Go 赛果后，这里会即时显示排名。</p>
-            </div>
-          ) : (
-            <AutoFit signature={`sng-${monthRanked.length}-${yearRanked.length}`}>
-              <div className="flex">
-                <div className="flex-1 min-w-0" style={{ marginRight: 24 }}>
-                  <SngPanel
-                    label="月度排行榜"
-                    period={periods ? `${periodLabel(periods.monthStart)}起　${periods.monthGames} 场` : ""}
-                    rows={monthRanked}
-                    changes={monthChanges}
-                    bigRank={SNG_BIG_ROWS}
-                  />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <SngPanel
-                    label="年度排行榜"
-                    period={periods ? `${periodLabel(periods.yearStart)}起　${periods.yearGames} 场` : ""}
-                    rows={yearRanked}
-                    changes={yearChanges}
-                    bigRank={SNG_BIG_ROWS}
-                  />
-                </div>
-              </div>
-            </AutoFit>
-          )
-        ) : cashRanked.length === 0 ? (
+        ) : ranked.length === 0 ? (
           <div className="py-20 text-center" style={{ color: "rgba(255,255,255,0.7)" }}>
-            <p className="text-xl font-semibold text-white mb-2">还没有玩家</p>
-            <p>管理员新增玩家后，这里会即时显示积分。</p>
+            <p className="text-xl font-semibold text-white mb-2">{isSng ? "这一期还没有赛果" : "还没有玩家"}</p>
+            <p>
+              {isSng
+                ? "管理员记录 Sit and Go 赛果后，这里会即时显示排名。"
+                : "管理员新增玩家后，这里会即时显示积分。"}
+            </p>
           </div>
         ) : (
           <AutoFitList
-            ranked={cashRanked}
-            changes={cashChanges}
-            RowComponent={CashRow}
-            signature={`cash-${cashRanked.length}`}
+            ranked={ranked}
+            changes={isSng ? (isYear ? yearChanges : monthChanges) : cashChanges}
+            RowComponent={isSng ? SngRow : CashRow}
+            bigRank={isSng ? SNG_BIG_ROWS : undefined}
+            signature={`${active}-${ranked.length}`}
           />
         )}
       </div>

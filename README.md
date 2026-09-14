@@ -11,7 +11,7 @@
 - 所有资料储存在 Netlify Database（Postgres）
 - 每次修改都记录管理员、时间、计分器和内容
 - 可新增多个管理员、修改自己的密码
-- 公开即时排行榜：`/board`，可选常规赛、Sit and Go 或轮流显示（`/board?show=sng`、`/board?show=rotate`），手机号自动遮盖
+- 公开即时排行榜：`/board`，可选常规赛、Sit and Go 月度、年度或轮流显示（`?show=cash` / `?show=month` / `?show=year` / `?show=rotate`；旧链接 `?show=sng` 等于月度），手机号自动遮盖
 - 汇出 Excel（CSV）、图片、文字；汇出修改纪录
 
 ## 部署（GitHub + Netlify，不需安装任何软件）

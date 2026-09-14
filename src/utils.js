@@ -134,7 +134,11 @@ export function rankSng(standings) {
   });
 }
 
-export const BOARD_NAMES = { cash: "常规赛", sng: "Sit and Go" };
+export const BOARD_NAMES = {
+  cash: "常规赛",
+  month: "Sit and Go 月度",
+  year: "Sit and Go 年度",
+};
 
 export const REWARD_OPTIONS = ["盲盒", "20000积分", "10000积分"];
 export const DEFAULT_REWARD = { 1: "盲盒", 2: "20000积分", 3: "10000积分" };
