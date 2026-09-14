@@ -14,6 +14,10 @@ import {
   maskPhone,
   newSessionToken,
   REWARD_OPTIONS,
+  dayStart,
+  defaultMonthStart,
+  defaultYearStart,
+  validDate,
   validReward,
   normPhone,
   readJson,
@@ -383,7 +387,8 @@ async function deletePlayer(admin: Admin, id: number) {
 
 const PLACE_LABEL: Record<number, string> = { 1: "第 1 名", 2: "第 2 名", 3: "第 3 名" };
 
-async function sngStandings(query: Query) {
+/** since = YYYY-MM-DD (a Hong Kong day) or null for all time. */
+async function sngStandings(query: Query, since: string | null = null) {
   const rows = await query(
     `SELECT p.id, p.name, p.phone,
             COUNT(*) FILTER (WHERE r.place = 1)::int AS firsts,
@@ -393,8 +398,10 @@ async function sngStandings(query: Query) {
        FROM sng_results r
        JOIN players p ON p.id = r.player_id
        JOIN sng_games g ON g.id = r.game_id
+      WHERE ($1::timestamptz IS NULL OR g.created_at >= $1::timestamptz)
       GROUP BY p.id, p.name, p.phone
-      ORDER BY firsts DESC, seconds DESC, thirds DESC, p.name ASC`
+      ORDER BY firsts DESC, seconds DESC, thirds DESC, p.name ASC`,
+    [since ? dayStart(since) : null]
   );
   return rows.map((r) => ({
     id: r.id,
@@ -407,9 +414,35 @@ async function sngStandings(query: Query) {
   }));
 }
 
+async function sngPeriods(query: Query) {
+  const rows = await query(
+    `SELECT key, value FROM settings WHERE key IN ('sng_month_start', 'sng_year_start')`
+  );
+  const map: Record<string, string> = {};
+  rows.forEach((r) => (map[r.key] = r.value));
+  return {
+    monthStart: map.sng_month_start || defaultMonthStart(),
+    yearStart: map.sng_year_start || defaultYearStart(),
+  };
+}
+
+async function sngGameCount(query: Query, since: string | null) {
+  const [row] = await query(
+    `SELECT COUNT(*)::int AS count FROM sng_games
+      WHERE ($1::timestamptz IS NULL OR created_at >= $1::timestamptz)`,
+    [since ? dayStart(since) : null]
+  );
+  return row.count as number;
+}
+
 async function listSng(url: URL) {
   const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 200, 1), 1000);
-  const standings = await sngStandings(q);
+  const periods = await sngPeriods(q);
+  const [standings, monthStandings, yearStandings] = await Promise.all([
+    sngStandings(q),
+    sngStandings(q, periods.monthStart),
+    sngStandings(q, periods.yearStart),
+  ]);
   const games = await q(
     `SELECT g.id, g.title, g.created_by, g.created_at,
             COALESCE(
@@ -428,8 +461,15 @@ async function listSng(url: URL) {
     [limit]
   );
   const [{ count }] = await q(`SELECT COUNT(*)::int AS count FROM sng_games`);
+  const [monthGames, yearGames] = await Promise.all([
+    sngGameCount(q, periods.monthStart),
+    sngGameCount(q, periods.yearStart),
+  ]);
   return json({
     standings,
+    monthStandings,
+    yearStandings,
+    periods: { ...periods, monthGames, yearGames },
     totalGames: count,
     games: games.map((g) => ({
       id: g.id,
@@ -798,22 +838,55 @@ async function listLogs(url: URL) {
 
 async function updateSettings(req: Request, admin: Admin) {
   const body = await readJson(req);
-  const title = String(body.title ?? "").trim().slice(0, 60) || "扑克积分排行榜";
-  await tx(async (query) => {
-    const [old] = await query(`SELECT value FROM settings WHERE key = 'title'`);
-    if (old?.value === title) return;
-    await query(
-      `INSERT INTO settings (key, value) VALUES ('title', $1)
-       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
-      [title]
-    );
-    await log(query, {
+
+  // Each field is optional, so the title form and the period form can post separately
+  const updates: { key: string; value: string; action: string; label: string }[] = [];
+  if (body.title !== undefined) {
+    updates.push({
+      key: "title",
+      value: String(body.title).trim().slice(0, 60) || "扑克积分排行榜",
       action: "title_change",
-      admin: admin.username,
-      detail: `${old?.value ?? ""} → ${title}`,
+      label: "排行榜名称",
     });
+  }
+  if (body.sngMonthStart !== undefined) {
+    updates.push({
+      key: "sng_month_start",
+      value: validDate(body.sngMonthStart, "月度起计日期"),
+      action: "sng_period",
+      label: "Sit and Go 月度起计日期",
+    });
+  }
+  if (body.sngYearStart !== undefined) {
+    updates.push({
+      key: "sng_year_start",
+      value: validDate(body.sngYearStart, "年度起计日期"),
+      action: "sng_period",
+      label: "Sit and Go 年度起计日期",
+    });
+  }
+  if (!updates.length) throw new HttpError(400, "没有要更新的设定");
+
+  const result = await tx(async (query) => {
+    for (const u of updates) {
+      const [old] = await query(`SELECT value FROM settings WHERE key = $1`, [u.key]);
+      if (old?.value === u.value) continue;
+      await query(
+        `INSERT INTO settings (key, value) VALUES ($1, $2)
+         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+        [u.key, u.value]
+      );
+      await log(query, {
+        action: u.action,
+        board: u.action === "sng_period" ? "sng" : null,
+        admin: admin.username,
+        detail: `${u.label}：${old?.value ?? "（未设定）"} → ${u.value}`,
+      });
+    }
+    const [title] = await query(`SELECT value FROM settings WHERE key = 'title'`);
+    return { title: title?.value ?? "扑克积分排行榜", periods: await sngPeriods(query) };
   });
-  return json({ title });
+  return json(result);
 }
 
 async function listAdmins() {
@@ -882,9 +955,27 @@ async function board() {
   const rows = await q(
     `SELECT id, name, phone, points, updated_at FROM players WHERE in_cash ORDER BY points DESC, name ASC`
   );
-  const standings = await sngStandings(q);
+  const periods = await sngPeriods(q);
+  const [standings, monthStandings, yearStandings] = await Promise.all([
+    sngStandings(q),
+    sngStandings(q, periods.monthStart),
+    sngStandings(q, periods.yearStart),
+  ]);
   const [{ count }] = await q(`SELECT COUNT(*)::int AS count FROM sng_games`);
+  const [monthGames, yearGames] = await Promise.all([
+    sngGameCount(q, periods.monthStart),
+    sngGameCount(q, periods.yearStart),
+  ]);
   const [setting] = await q(`SELECT value FROM settings WHERE key = 'title'`);
+  const publicRow = (s: any) => ({
+    id: s.id,
+    name: s.name,
+    phoneMasked: maskPhone(s.phone),
+    firsts: s.firsts,
+    seconds: s.seconds,
+    thirds: s.thirds,
+    lastAt: s.lastAt,
+  });
   return json({
     title: setting?.value ?? "扑克积分排行榜",
     players: rows.map((r) => ({
@@ -894,15 +985,10 @@ async function board() {
       points: Number(r.points),
       updatedAt: r.updated_at,
     })),
-    sng: standings.map((s) => ({
-      id: s.id,
-      name: s.name,
-      phoneMasked: maskPhone(s.phone),
-      firsts: s.firsts,
-      seconds: s.seconds,
-      thirds: s.thirds,
-      lastAt: s.lastAt,
-    })),
+    sng: standings.map(publicRow),
+    sngMonth: monthStandings.map(publicRow),
+    sngYear: yearStandings.map(publicRow),
+    periods: { ...periods, monthGames, yearGames },
     totalGames: count,
   });
 }

@@ -29,6 +29,14 @@ const SNG_BIG_ROWS = 4;
 const TWO_COLUMN_FROM = 9;
 const MIN_SCALE = 0.4;
 
+/** 2026-09-01 -> 9月1日（year shown only when it is not the current year） */
+function periodLabel(date) {
+  if (!date) return "";
+  const [y, m, d] = date.split("-").map(Number);
+  const thisYear = new Date().getFullYear();
+  return `${y === thisYear ? "" : y + "年"}${m}月${d}日`;
+}
+
 function readView() {
   const v = new URLSearchParams(window.location.search).get("show");
   return ["cash", "sng", "rotate"].includes(v) ? v : "cash";
@@ -118,24 +126,21 @@ function ChangeBadge({ change, big }) {
  * Spacing uses margins instead of flex `gap`, because the browser built into
  * older TVs does not support gap in flexbox and would render everything squashed.
  */
-function Row({ p, big, change, children }) {
+function Row({ p, big, change, children, compact }) {
   const highlight = change && (change.isNew || change.highlight);
+  const nameSize = compact ? (big ? "text-2xl" : "text-lg") : big ? "text-4xl" : "text-xl";
+  const phoneSize = compact ? "text-xs" : big ? "text-lg" : "text-sm";
   return (
     <li
       className={`flex items-center rounded-lg ${big ? "px-4 py-3" : "px-3 py-2"} mb-2 transition-colors duration-700`}
       style={{ background: highlight ? "rgba(201,162,74,0.30)" : "rgba(255,255,255,0.06)" }}
     >
       <div className={big ? "mr-4" : "mr-3"}>
-        <RankMark rank={p.rank} size={big ? "lg" : "md"} dark />
+        <RankMark rank={p.rank} size={big && !compact ? "lg" : "md"} dark />
       </div>
       <div className="flex-1 min-w-0">
-        <div className={`${big ? "text-4xl" : "text-xl"} font-bold text-white truncate leading-tight`}>
-          {p.name}
-        </div>
-        <div
-          className={`${big ? "text-lg" : "text-sm"} tabular-nums truncate`}
-          style={{ color: "rgba(255,255,255,0.55)" }}
-        >
+        <div className={`${nameSize} font-bold text-white truncate leading-tight`}>{p.name}</div>
+        <div className={`${phoneSize} tabular-nums truncate`} style={{ color: "rgba(255,255,255,0.55)" }}>
           {p.phoneMasked}
         </div>
       </div>
@@ -157,21 +162,27 @@ function CashRow({ p, big, change }) {
   );
 }
 
-function SngRow({ p, big, change }) {
+function SngRow({ p, big, change, compact }) {
   // The 1st-place count decides the ranking, so it is the largest number on the row
-  const stats = [
-    ["第1名", p.firsts, big ? "text-8xl" : "text-4xl"],
-    ["第2名", p.seconds, big ? "text-6xl" : "text-3xl"],
-    ["第3名", p.thirds, big ? "text-6xl" : "text-3xl"],
-  ];
+  const stats = compact
+    ? [
+        ["第1名", p.firsts, big ? "text-5xl" : "text-3xl"],
+        ["第2名", p.seconds, big ? "text-4xl" : "text-2xl"],
+        ["第3名", p.thirds, big ? "text-4xl" : "text-2xl"],
+      ]
+    : [
+        ["第1名", p.firsts, big ? "text-8xl" : "text-4xl"],
+        ["第2名", p.seconds, big ? "text-6xl" : "text-3xl"],
+        ["第3名", p.thirds, big ? "text-6xl" : "text-3xl"],
+      ];
   return (
-    <Row p={p} big={big} change={change}>
+    <Row p={p} big={big} change={change} compact={compact}>
       <div className="flex items-end tabular-nums ml-3">
         {stats.map(([label, n, size], i) => (
           <div
             key={label}
             className={i ? "text-center ml-4" : "text-center"}
-            style={{ minWidth: big ? 118 : 58 }}
+            style={{ minWidth: compact ? (big ? 70 : 48) : big ? 118 : 58 }}
           >
             <div
               className={`${size} font-bold leading-none`}
@@ -180,7 +191,7 @@ function SngRow({ p, big, change }) {
               {n}
             </div>
             <div
-              className={big ? "text-lg mt-1" : "text-xs mt-1"}
+              className={compact ? "text-xs mt-1" : big ? "text-lg mt-1" : "text-xs mt-1"}
               style={{ color: "rgba(255,255,255,0.6)" }}
             >
               {label}
@@ -192,8 +203,8 @@ function SngRow({ p, big, change }) {
   );
 }
 
-/** Splits the list into one or two columns and shrinks it until everything fits the screen. */
-function AutoFitList({ ranked, changes, RowComponent, signature, bigCount, bigRank }) {
+/** Shrinks its children until they fit the remaining screen height. */
+function AutoFit({ signature, children }) {
   const wrapRef = useRef(null);
   const innerRef = useRef(null);
   const [scale, setScale] = useState(1);
@@ -222,6 +233,47 @@ function AutoFitList({ ranked, changes, RowComponent, signature, bigCount, bigRa
     return () => window.removeEventListener("resize", fit);
   }, [fit]);
 
+  return (
+    <div ref={wrapRef} style={{ overflow: "hidden" }}>
+      <div
+        ref={innerRef}
+        style={{ transform: `scale(${scale})`, transformOrigin: "top left", width: `${100 / scale}%` }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/** One period's Sit and Go table: heading plus its rows. */
+function SngPanel({ label, period, rows, changes, bigRank }) {
+  return (
+    <div className="flex-1 min-w-0">
+      <div className="mb-2">
+        <div className="text-2xl font-bold" style={{ color: C.brass }}>
+          {label}
+        </div>
+        <div className="text-sm" style={{ color: "rgba(255,255,255,0.6)" }}>
+          {period}
+        </div>
+      </div>
+      {rows.length === 0 ? (
+        <p className="py-8 text-center text-sm" style={{ color: "rgba(255,255,255,0.6)" }}>
+          这一期还没有赛果
+        </p>
+      ) : (
+        <ol>
+          {rows.map((p) => (
+            <SngRow key={p.id} p={p} big={p.rank <= bigRank} change={changes[p.id]} compact />
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+/** Splits the list into one or two columns and shrinks it until everything fits the screen. */
+function AutoFitList({ ranked, changes, RowComponent, signature, bigCount, bigRank }) {
   const twoColumns = ranked.length >= TWO_COLUMN_FROM;
   // bigCount rows at the top are shown double size; the rest stay compact
   const bigRows = bigCount === undefined ? (ranked.length <= BIG_ROW_LIMIT && !twoColumns ? ranked.length : 0) : bigCount;
@@ -234,16 +286,8 @@ function AutoFitList({ ranked, changes, RowComponent, signature, bigCount, bigRa
     : [{ rows: ranked, offset: 0 }];
 
   return (
-    <div ref={wrapRef} style={{ overflow: "hidden" }}>
-      <div
-        ref={innerRef}
-        style={{
-          transform: `scale(${scale})`,
-          transformOrigin: "top left",
-          width: `${100 / scale}%`,
-        }}
-      >
-        <div className={twoColumns ? "flex" : ""}>
+    <AutoFit signature={signature}>
+      <div className={twoColumns ? "flex" : ""}>
           {columns.map((col, i) => (
             <ol
               key={i}
@@ -260,14 +304,20 @@ function AutoFitList({ ranked, changes, RowComponent, signature, bigCount, bigRa
               ))}
             </ol>
           ))}
-        </div>
       </div>
-    </div>
+    </AutoFit>
   );
 }
 
 export default function BoardPage() {
-  const [data, setData] = useState({ title: DEFAULT_TITLE, players: [], sng: [], totalGames: 0 });
+  const [data, setData] = useState({
+    title: DEFAULT_TITLE,
+    players: [],
+    sngMonth: [],
+    sngYear: [],
+    periods: null,
+    totalGames: 0,
+  });
   const [loaded, setLoaded] = useState(false);
   const [syncOk, setSyncOk] = useState(true);
   const [view, setView] = useState(readView);
@@ -282,7 +332,13 @@ export default function BoardPage() {
       try {
         const r = await api("/board");
         if (stopped) return;
-        setData({ ...r, sng: r.sng || [], totalGames: r.totalGames || 0 });
+        setData({
+          ...r,
+          sngMonth: r.sngMonth || r.sng || [],
+          sngYear: r.sngYear || r.sng || [],
+          periods: r.periods || null,
+          totalGames: r.totalGames || 0,
+        });
         setSyncOk(true);
       } catch {
         if (!stopped) setSyncOk(false);
@@ -322,16 +378,19 @@ export default function BoardPage() {
   };
 
   const cashRanked = useMemo(() => rankPlayers(data.players), [data.players]);
-  const sngRanked = useMemo(() => rankSng(data.sng), [data.sng]);
+  const monthRanked = useMemo(() => rankSng(data.sngMonth), [data.sngMonth]);
+  const yearRanked = useMemo(() => rankSng(data.sngYear), [data.sngYear]);
   const cashChanges = useChanges(cashRanked, loaded, cashDiff);
-  const sngChanges = useChanges(sngRanked, loaded, sngDiff);
+  const monthChanges = useChanges(monthRanked, loaded, sngDiff);
+  const yearChanges = useChanges(yearRanked, loaded, sngDiff);
 
   const active = view === "rotate" ? rotating : view;
   const isSng = active === "sng";
-  const ranked = isSng ? sngRanked : cashRanked;
+  const ranked = isSng ? monthRanked : cashRanked;
+  const periods = data.periods;
 
   const lastUpdate = isSng
-    ? data.sng.reduce((m, p) => Math.max(m, new Date(p.lastAt).getTime() || 0), 0)
+    ? data.sngYear.reduce((m, p) => Math.max(m, new Date(p.lastAt).getTime() || 0), 0)
     : data.players.reduce((m, p) => Math.max(m, new Date(p.updatedAt).getTime() || 0), 0);
 
   const goFullscreen = async () => {
@@ -370,8 +429,14 @@ export default function BoardPage() {
                 />
                 {syncOk ? "即时更新中" : "连线中断，正在重试"}
               </span>
-              <span className="mr-4">{ranked.length} 位玩家</span>
-              {isSng && <span className="mr-4">共 {data.totalGames} 场</span>}
+              <span className="mr-4">
+                {isSng ? `月度 ${monthRanked.length} 人・年度 ${yearRanked.length} 人` : `${ranked.length} 位玩家`}
+              </span>
+              {isSng && periods && (
+                <span className="mr-4">
+                  月度 {periods.monthGames} 场・年度 {periods.yearGames} 场
+                </span>
+              )}
               <span className="mr-4">最后更新 {fmtDateTime(lastUpdate || null)}</span>
             </div>
           </div>
@@ -420,22 +485,47 @@ export default function BoardPage() {
           <p className="py-20 text-center" style={{ color: "rgba(255,255,255,0.7)" }}>
             载入中…
           </p>
-        ) : ranked.length === 0 ? (
+        ) : isSng ? (
+          monthRanked.length === 0 && yearRanked.length === 0 ? (
+            <div className="py-20 text-center" style={{ color: "rgba(255,255,255,0.7)" }}>
+              <p className="text-xl font-semibold text-white mb-2">还没有赛果</p>
+              <p>管理员记录 Sit and Go 赛果后，这里会即时显示排名。</p>
+            </div>
+          ) : (
+            <AutoFit signature={`sng-${monthRanked.length}-${yearRanked.length}`}>
+              <div className="flex">
+                <div className="flex-1 min-w-0" style={{ marginRight: 24 }}>
+                  <SngPanel
+                    label="月度排行榜"
+                    period={periods ? `${periodLabel(periods.monthStart)}起　${periods.monthGames} 场` : ""}
+                    rows={monthRanked}
+                    changes={monthChanges}
+                    bigRank={SNG_BIG_ROWS}
+                  />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <SngPanel
+                    label="年度排行榜"
+                    period={periods ? `${periodLabel(periods.yearStart)}起　${periods.yearGames} 场` : ""}
+                    rows={yearRanked}
+                    changes={yearChanges}
+                    bigRank={SNG_BIG_ROWS}
+                  />
+                </div>
+              </div>
+            </AutoFit>
+          )
+        ) : cashRanked.length === 0 ? (
           <div className="py-20 text-center" style={{ color: "rgba(255,255,255,0.7)" }}>
-            <p className="text-xl font-semibold text-white mb-2">{isSng ? "还没有赛果" : "还没有玩家"}</p>
-            <p>
-              {isSng
-                ? "管理员记录 Sit and Go 赛果后，这里会即时显示排名。"
-                : "管理员新增玩家后，这里会即时显示积分。"}
-            </p>
+            <p className="text-xl font-semibold text-white mb-2">还没有玩家</p>
+            <p>管理员新增玩家后，这里会即时显示积分。</p>
           </div>
         ) : (
           <AutoFitList
-            ranked={ranked}
-            changes={isSng ? sngChanges : cashChanges}
-            RowComponent={isSng ? SngRow : CashRow}
-            bigRank={isSng ? SNG_BIG_ROWS : undefined}
-            signature={`${active}-${ranked.length}`}
+            ranked={cashRanked}
+            changes={cashChanges}
+            RowComponent={CashRow}
+            signature={`cash-${cashRanked.length}`}
           />
         )}
       </div>

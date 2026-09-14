@@ -158,3 +158,38 @@ export function validReward(v: unknown, label = ""): string | null {
   }
   return s;
 }
+
+// ---------- Sit and Go periods ----------
+
+export const HK_OFFSET = "+08:00";
+
+/** Today's date in Hong Kong as YYYY-MM-DD. */
+export function hkToday(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Hong_Kong",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+export function defaultMonthStart(): string {
+  return hkToday().slice(0, 8) + "01";
+}
+
+export function defaultYearStart(): string {
+  return hkToday().slice(0, 4) + "-01-01";
+}
+
+export function validDate(v: unknown, label: string): string {
+  const s = String(v ?? "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) throw new HttpError(400, `${label}格式不正确，请用 2026-09-01 这种格式`);
+  const d = new Date(`${s}T00:00:00${HK_OFFSET}`);
+  if (isNaN(d.getTime())) throw new HttpError(400, `${label}不是有效日期`);
+  return s;
+}
+
+/** Start of that Hong Kong day, as a value Postgres can compare against timestamptz. */
+export function dayStart(date: string): string {
+  return `${date}T00:00:00${HK_OFFSET}`;
+}

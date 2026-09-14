@@ -29,6 +29,7 @@ const ACTIONS = {
   sng_reward: "修改奖励",
   reward_use: "使用奖励",
   reward_undo: "取消使用奖励",
+  sng_period: "修改结算日期",
 };
 
 const FILTERS = [

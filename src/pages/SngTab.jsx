@@ -24,6 +24,19 @@ import {
 } from "../utils.js";
 
 const MASK_KEY = "poker-ranking:mask-export";
+const SCOPES = [
+  ["month", "月度"],
+  ["year", "年度"],
+  ["all", "全部"],
+];
+
+const todayHK = () =>
+  new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Hong_Kong",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
 const PLACES = [1, 2, 3];
 const emptyEntry = (place) => ({ name: "", phone: "", reward: DEFAULT_REWARD[place] });
 const emptyForm = () => ({ title: "", 1: emptyEntry(1), 2: emptyEntry(2), 3: emptyEntry(3) });
@@ -74,6 +87,10 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
   const [rewardError, setRewardError] = useState("");
   const [rewardBusy, setRewardBusy] = useState(false);
   const [imageUrl, setImageUrl] = useState(null);
+  const [scope, setScope] = useState("month");
+  const [periodDraft, setPeriodDraft] = useState(null);
+  const [periodError, setPeriodError] = useState("");
+  const [periodBusy, setPeriodBusy] = useState(false);
 
   useEffect(() => {
     try {
@@ -90,13 +107,41 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
     return () => window.removeEventListener("keydown", onKey);
   }, [imageUrl]);
 
+  useEffect(() => {
+    if (sng.periods && !periodDraft) {
+      setPeriodDraft({ monthStart: sng.periods.monthStart, yearStart: sng.periods.yearStart });
+    }
+  }, [sng.periods, periodDraft]);
+
+  // The API field names are sngMonthStart / sngYearStart
+  const savePeriods = async (key) => {
+    if (periodBusy) return;
+    const field = key === "monthStart" ? "sngMonthStart" : "sngYearStart";
+    const patch = { [field]: periodDraft[key] };
+    setPeriodBusy(true);
+    setPeriodError("");
+    try {
+      const r = await call("/settings", { method: "PUT", body: patch });
+      setPeriodDraft({ monthStart: r.periods.monthStart, yearStart: r.periods.yearStart });
+      await refresh();
+      flash("已更新结算日期");
+    } catch (e) {
+      setPeriodError(e.message);
+    } finally {
+      setPeriodBusy(false);
+    }
+  };
+
   const byPhone = useMemo(() => {
     const m = new Map();
     players.forEach((p) => m.set(normPhone(p.phone), p));
     return m;
   }, [players]);
 
-  const ranked = useMemo(() => rankSng(sng.standings), [sng.standings]);
+  const scopedStandings =
+    scope === "month" ? sng.monthStandings : scope === "year" ? sng.yearStandings : sng.standings;
+  const ranked = useMemo(() => rankSng(scopedStandings || []), [scopedStandings]);
+  const scopeLabel = SCOPES.find(([k]) => k === scope)[1];
   const q = query.trim().toLowerCase();
   const visible = q
     ? ranked.filter(
@@ -195,7 +240,7 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
 
   const exportCSV = () => {
     downloadCSV(
-      `${safeName(title)}_SitAndGo_${today()}.csv`,
+      `${safeName(title)}_SitAndGo_${scopeLabel}_${today()}.csv`,
       ["排名", "姓名", "手机号", "第1名次数", "第2名次数", "第3名次数", "前三名总次数", "最近入围日期"],
       ranked.map((p) => [
         p.rank,
@@ -248,7 +293,7 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
 
   const copyRanking = async () => {
     const lines = [
-      `${title || DEFAULT_TITLE} Sit and Go（${today()}）`,
+      `${title || DEFAULT_TITLE} Sit and Go ${scopeLabel}排行榜（${today()}）`,
       ...ranked.map(
         (p) =>
           `${p.rank}. ${p.name}（${phoneOut(p)}）第1名 ${p.firsts} 次　第2名 ${p.seconds} 次　第3名 ${p.thirds} 次`
@@ -261,8 +306,86 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
   return (
     <>
       <div className="grid gap-6 md:grid-cols-3 items-start">
+        {/* left column: cut-off dates + result entry; right column: standings + history */}
+        <div className="md:col-span-1 flex flex-col gap-6">
         <section
-          className="md:col-span-1 bg-white rounded-lg border p-5"
+          className="bg-white rounded-lg border p-5"
+          style={{ borderColor: C.line }}
+          aria-labelledby="sng-period"
+        >
+          <h2 id="sng-period" className="text-lg font-bold">
+            结算日期
+          </h2>
+          <p className="text-xs mb-4" style={{ color: C.muted }}>
+            月度和年度排行榜只计算起计日期当天（香港时间）之后的赛果。改了日期即等于重新开始一期。
+          </p>
+          {!periodDraft ? (
+            <p className="text-sm" style={{ color: C.muted }}>
+              载入中…
+            </p>
+          ) : (
+            <div className="flex flex-col gap-4">
+              {[
+                ["monthStart", "月度起计日期", sng.periods && sng.periods.monthGames, () => todayHK().slice(0, 8) + "01", "本月 1 日"],
+                ["yearStart", "年度起计日期", sng.periods && sng.periods.yearGames, () => todayHK().slice(0, 4) + "-01-01", "本年 1 月 1 日"],
+              ].map(([key, label, games, quick, quickLabel]) => (
+                <div key={key}>
+                  <label htmlFor={`sng-${key}`} className="block text-sm font-medium mb-1">
+                    {label}
+                  </label>
+                  <input
+                    id={`sng-${key}`}
+                    type="date"
+                    className={inputCls}
+                    style={{ borderColor: C.line }}
+                    value={periodDraft[key]}
+                    onChange={(e) => setPeriodDraft({ ...periodDraft, [key]: e.target.value })}
+                  />
+                  <div className="flex flex-wrap items-center gap-2 mt-2">
+                    <button
+                      className={btnPrimary}
+                      style={{ background: C.felt }}
+                      onClick={() => savePeriods(key)}
+                      disabled={periodBusy || !periodDraft[key]}
+                    >
+                      储存
+                    </button>
+                    <button
+                      className={btnSecondary}
+                      style={{ borderColor: C.line, color: C.ink }}
+                      onClick={() => setPeriodDraft({ ...periodDraft, [key]: quick() })}
+                      disabled={periodBusy}
+                    >
+                      {quickLabel}
+                    </button>
+                    <button
+                      className={btnSecondary}
+                      style={{ borderColor: C.line, color: C.ink }}
+                      onClick={() => setPeriodDraft({ ...periodDraft, [key]: todayHK() })}
+                      disabled={periodBusy}
+                    >
+                      今天
+                    </button>
+                    <span className="text-xs" style={{ color: C.muted }}>
+                      现有 {games ?? 0} 场
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {periodError && (
+            <p className="text-sm mt-3" style={{ color: C.red }} role="alert">
+              {periodError}
+            </p>
+          )}
+          <p className="text-xs mt-4 leading-relaxed" style={{ color: C.muted }}>
+            旧赛果不会被删除，只是不再计入这一期。把日期调回去就能重新看到。
+          </p>
+        </section>
+
+        <section
+          className="bg-white rounded-lg border p-5"
           style={{ borderColor: C.line }}
           aria-labelledby="sng-form"
         >
@@ -401,6 +524,7 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
             如果输入某个名次，姓名和手机号都要填。同一个手机号会被视为同一位玩家。奖励只在后台显示，不会出现在即时排行榜。
           </p>
         </section>
+        </div>
 
         <div className="md:col-span-2 flex flex-col gap-6">
           <section className="bg-white rounded-lg border" style={{ borderColor: C.line }} aria-labelledby="sng-rank">
@@ -408,7 +532,7 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <h2 id="sng-rank" className="text-lg font-bold">
-                    Sit and Go 排名
+                    Sit and Go {scopeLabel}排名
                   </h2>
                   <p className="text-xs" style={{ color: C.muted }}>
                     第 1 名次数最多排最前；相同时比较第 2 名，再比较第 3 名次数。
@@ -421,7 +545,9 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
                   <button
                     className={btnSecondary}
                     style={{ borderColor: C.line, color: C.ink }}
-                    onClick={() => setImageUrl(buildSngImage({ title, ranked, phoneOf: phoneOut }))}
+                    onClick={() =>
+                      setImageUrl(buildSngImage({ title: `${title} ${scopeLabel}`, ranked, phoneOf: phoneOut }))
+                    }
                     disabled={empty}
                   >
                     汇出图片
@@ -437,9 +563,25 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-3">
+                <div className="flex rounded-md border overflow-hidden" style={{ borderColor: C.line }} role="group">
+                  {SCOPES.map(([key, label]) => (
+                    <button
+                      key={key}
+                      onClick={() => setScope(key)}
+                      aria-pressed={scope === key}
+                      className="px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-700"
+                      style={{
+                        background: scope === key ? C.felt : "#fff",
+                        color: scope === key ? "#fff" : C.ink,
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
                 <input
                   className={inputCls + " flex-1"}
-                  style={{ borderColor: C.line, minWidth: 180 }}
+                  style={{ borderColor: C.line, minWidth: 150 }}
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="搜寻姓名或手机号"
@@ -782,7 +924,7 @@ export default function SngTab({ sng, loaded, players, title, call, refresh, fla
               </button>
               <a
                 href={imageUrl}
-                download={`${safeName(title)}_SitAndGo_${today()}.png`}
+                download={`${safeName(title)}_SitAndGo_${scopeLabel}_${today()}.png`}
                 className={btnPrimary + " inline-block"}
                 style={{ background: C.felt }}
               >
