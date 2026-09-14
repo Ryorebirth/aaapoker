@@ -21,8 +21,10 @@ const VIEWS = [
   ["rotate", "轮流显示"],
 ];
 
-// Below this many players the top 3 get the large treatment; above it every row is uniform
+// Below this many players the whole Cash Game list gets the large treatment
 const BIG_ROW_LIMIT = 6;
+// Sit and Go always shows its leading players in double size
+const SNG_BIG_ROWS = 4;
 // Two columns once the list gets long, so twice as many players fit on screen
 const TWO_COLUMN_FROM = 9;
 const MIN_SCALE = 0.4;
@@ -127,10 +129,13 @@ function Row({ p, big, change, children }) {
         <RankMark rank={p.rank} size={big ? "lg" : "md"} dark />
       </div>
       <div className="flex-1 min-w-0">
-        <div className={`${big ? "text-3xl" : "text-xl"} font-bold text-white truncate leading-tight`}>
+        <div className={`${big ? "text-4xl" : "text-xl"} font-bold text-white truncate leading-tight`}>
           {p.name}
         </div>
-        <div className="text-sm tabular-nums truncate" style={{ color: "rgba(255,255,255,0.55)" }}>
+        <div
+          className={`${big ? "text-lg" : "text-sm"} tabular-nums truncate`}
+          style={{ color: "rgba(255,255,255,0.55)" }}
+        >
           {p.phoneMasked}
         </div>
       </div>
@@ -153,23 +158,31 @@ function CashRow({ p, big, change }) {
 }
 
 function SngRow({ p, big, change }) {
+  // The 1st-place count decides the ranking, so it is the largest number on the row
   const stats = [
-    ["第1名", p.firsts],
-    ["第2名", p.seconds],
-    ["第3名", p.thirds],
+    ["第1名", p.firsts, big ? "text-8xl" : "text-4xl"],
+    ["第2名", p.seconds, big ? "text-6xl" : "text-3xl"],
+    ["第3名", p.thirds, big ? "text-6xl" : "text-3xl"],
   ];
   return (
     <Row p={p} big={big} change={change}>
       <div className="flex items-end tabular-nums ml-3">
-        {stats.map(([label, n], i) => (
-          <div key={label} className={i ? "text-center ml-3" : "text-center"} style={{ minWidth: big ? 54 : 44 }}>
+        {stats.map(([label, n, size], i) => (
+          <div
+            key={label}
+            className={i ? "text-center ml-4" : "text-center"}
+            style={{ minWidth: big ? 118 : 58 }}
+          >
             <div
-              className={`${big ? "text-4xl" : "text-2xl"} font-bold leading-none`}
-              style={{ color: n ? "#fff" : "rgba(255,255,255,0.45)" }}
+              className={`${size} font-bold leading-none`}
+              style={{ color: n ? "#fff" : "rgba(255,255,255,0.35)" }}
             >
               {n}
             </div>
-            <div className="text-xs" style={{ color: "rgba(255,255,255,0.55)" }}>
+            <div
+              className={big ? "text-lg mt-1" : "text-xs mt-1"}
+              style={{ color: "rgba(255,255,255,0.6)" }}
+            >
               {label}
             </div>
           </div>
@@ -180,7 +193,7 @@ function SngRow({ p, big, change }) {
 }
 
 /** Splits the list into one or two columns and shrinks it until everything fits the screen. */
-function AutoFitList({ ranked, changes, RowComponent, signature }) {
+function AutoFitList({ ranked, changes, RowComponent, signature, bigCount, bigRank }) {
   const wrapRef = useRef(null);
   const innerRef = useRef(null);
   const [scale, setScale] = useState(1);
@@ -210,9 +223,15 @@ function AutoFitList({ ranked, changes, RowComponent, signature }) {
   }, [fit]);
 
   const twoColumns = ranked.length >= TWO_COLUMN_FROM;
-  const big = ranked.length <= BIG_ROW_LIMIT;
+  // bigCount rows at the top are shown double size; the rest stay compact
+  const bigRows = bigCount === undefined ? (ranked.length <= BIG_ROW_LIMIT && !twoColumns ? ranked.length : 0) : bigCount;
   const half = Math.ceil(ranked.length / 2);
-  const columns = twoColumns ? [ranked.slice(0, half), ranked.slice(half)] : [ranked];
+  const columns = twoColumns
+    ? [
+        { rows: ranked.slice(0, half), offset: 0 },
+        { rows: ranked.slice(half), offset: half },
+      ]
+    : [{ rows: ranked, offset: 0 }];
 
   return (
     <div ref={wrapRef} style={{ overflow: "hidden" }}>
@@ -231,8 +250,13 @@ function AutoFitList({ ranked, changes, RowComponent, signature }) {
               className={twoColumns ? "flex-1 min-w-0" : ""}
               style={twoColumns && i === 0 ? { marginRight: 16 } : undefined}
             >
-              {col.map((p) => (
-                <RowComponent key={p.id} p={p} big={big && !twoColumns} change={changes[p.id]} />
+              {col.rows.map((p, j) => (
+                <RowComponent
+                  key={p.id}
+                  p={p}
+                  big={bigRank ? p.rank <= bigRank : col.offset + j < bigRows}
+                  change={changes[p.id]}
+                />
               ))}
             </ol>
           ))}
@@ -410,6 +434,7 @@ export default function BoardPage() {
             ranked={ranked}
             changes={isSng ? sngChanges : cashChanges}
             RowComponent={isSng ? SngRow : CashRow}
+            bigRank={isSng ? SNG_BIG_ROWS : undefined}
             signature={`${active}-${ranked.length}`}
           />
         )}
