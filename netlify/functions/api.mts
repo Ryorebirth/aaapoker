@@ -615,6 +615,151 @@ async function updateSngReward(req: Request, admin: Admin, gameId: number, place
   return json(result);
 }
 
+// ---------- Customer list ----------
+
+/** Everything the club knows about each customer: profile, results and prizes in hand. */
+async function listCustomers() {
+  const periods = await sngPeriods(q);
+  const [players, all, month, year, prizeTypes, prizeBalances, rewards] = await Promise.all([
+    q(`SELECT * FROM players ORDER BY name`),
+    sngStandings(q),
+    sngStandings(q, periods.monthStart),
+    sngStandings(q, periods.yearStart),
+    q(`SELECT id, name, active, sort_order FROM prize_types ORDER BY sort_order, id`),
+    q(`SELECT player_id, prize_type_id, SUM(quantity)::int AS balance
+         FROM prize_entries GROUP BY player_id, prize_type_id`),
+    q(`SELECT player_id, reward,
+              COUNT(*) FILTER (WHERE reward_used_at IS NULL)::int AS available,
+              COUNT(*)::int AS won
+         FROM sng_results WHERE reward IS NOT NULL GROUP BY player_id, reward`),
+  ]);
+
+  const byId = (list) => {
+    const m = new Map();
+    list.forEach((x) => m.set(x.id, x));
+    return m;
+  };
+  const allMap = byId(all);
+  const monthMap = byId(month);
+  const yearMap = byId(year);
+  const typeName = new Map(prizeTypes.map((t) => [t.id, t.name]));
+
+  // Cash Game rank, shared by equal scores
+  const cashSorted = players
+    .filter((p) => p.in_cash)
+    .sort((a, b) => Number(b.points) - Number(a.points) || a.name.localeCompare(b.name, "zh-Hans"));
+  const cashRank = new Map();
+  let prevPoints = null;
+  let prevRank = 0;
+  cashSorted.forEach((p, i) => {
+    const rank = Number(p.points) === prevPoints ? prevRank : i + 1;
+    prevPoints = Number(p.points);
+    prevRank = rank;
+    cashRank.set(p.id, rank);
+  });
+
+  const stats = (m, id) => {
+    const row = m.get(id);
+    return {
+      firsts: row ? row.firsts : 0,
+      seconds: row ? row.seconds : 0,
+      thirds: row ? row.thirds : 0,
+    };
+  };
+
+  return json({
+    periods,
+    prizeTypes: prizeTypes.map((t) => ({ id: t.id, name: t.name, active: t.active })),
+    customers: players.map((p) => {
+      const prizes = prizeBalances
+        .filter((b) => b.player_id === p.id && b.balance > 0)
+        .map((b) => ({ typeId: b.prize_type_id, name: typeName.get(b.prize_type_id) || "已删除的奖品", balance: b.balance }));
+      const held = rewards
+        .filter((r) => r.player_id === p.id && r.available > 0)
+        .map((r) => ({ reward: r.reward, available: r.available, won: r.won }));
+      return {
+        id: p.id,
+        name: p.name,
+        phone: p.phone,
+        inCash: p.in_cash,
+        points: Number(p.points),
+        cashRank: cashRank.get(p.id) || null,
+        createdAt: p.created_at,
+        updatedAt: p.updated_at,
+        updatedBy: p.updated_by,
+        sngAll: stats(allMap, p.id),
+        sngMonth: stats(monthMap, p.id),
+        sngYear: stats(yearMap, p.id),
+        prizes,
+        rewards: held,
+        prizeTotal: prizes.reduce((n, x) => n + x.balance, 0),
+        rewardTotal: held.reduce((n, x) => n + x.available, 0),
+      };
+    }),
+  });
+}
+
+/** One customer's full file: every game, prize movement and change made to them. */
+async function customerDetail(id: number) {
+  const [player] = await q(`SELECT * FROM players WHERE id = $1`, [id]);
+  if (!player) throw new HttpError(404, "找不到这位客户");
+
+  const [games, prizeHistory, logs] = await Promise.all([
+    q(
+      `SELECT g.id, g.title, g.created_at, r.place, r.reward, r.reward_used_at
+         FROM sng_results r JOIN sng_games g ON g.id = r.game_id
+        WHERE r.player_id = $1
+        ORDER BY g.created_at DESC, g.id DESC
+        LIMIT 200`,
+      [id]
+    ),
+    q(
+      `SELECT e.id, e.quantity, e.period, e.note, e.admin_username, e.created_at, t.name AS type_name
+         FROM prize_entries e JOIN prize_types t ON t.id = e.prize_type_id
+        WHERE e.player_id = $1
+        ORDER BY e.created_at DESC, e.id DESC
+        LIMIT 200`,
+      [id]
+    ),
+    q(
+      `SELECT * FROM activity_logs WHERE player_id = $1 ORDER BY created_at DESC, id DESC LIMIT 200`,
+      [id]
+    ),
+  ]);
+
+  return json({
+    customer: {
+      id: player.id,
+      name: player.name,
+      phone: player.phone,
+      inCash: player.in_cash,
+      points: Number(player.points),
+      createdAt: player.created_at,
+      createdBy: player.created_by,
+      updatedAt: player.updated_at,
+      updatedBy: player.updated_by,
+    },
+    games: games.map((g) => ({
+      gameId: g.id,
+      title: g.title || `第 ${g.id} 场`,
+      playedAt: g.created_at,
+      place: g.place,
+      reward: g.reward,
+      rewardUsedAt: g.reward_used_at,
+    })),
+    prizeHistory: prizeHistory.map((h) => ({
+      id: Number(h.id),
+      quantity: h.quantity,
+      period: h.period,
+      note: h.note,
+      typeName: h.type_name,
+      adminUsername: h.admin_username,
+      createdAt: h.created_at,
+    })),
+    logs: logs.map(toLog),
+  });
+}
+
 // ---------- Customer prizes ----------
 
 const PRIZE_PERIOD_RE = /^\d{4}-\d{2}$/;
@@ -1318,6 +1463,10 @@ export default async (req: Request, _context: Context) => {
       if (seg.length === 3 && seg[1] === "games" && method === "DELETE") {
         return await deleteSngGame(admin, validId(seg[2]));
       }
+    }
+    if (path === "/customers" && method === "GET") return await listCustomers();
+    if (seg[0] === "customers" && seg.length === 2 && method === "GET") {
+      return await customerDetail(validId(seg[1]));
     }
     if (seg[0] === "prizes") {
       if (seg.length === 1 && method === "GET") return await prizeOverview(url);

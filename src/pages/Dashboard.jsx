@@ -5,6 +5,7 @@ import RankingTab from "./RankingTab.jsx";
 import SngTab from "./SngTab.jsx";
 import RewardsTab from "./RewardsTab.jsx";
 import PrizesTab from "./PrizesTab.jsx";
+import CustomersTab from "./CustomersTab.jsx";
 import LogsTab from "./LogsTab.jsx";
 import AdminsTab from "./AdminsTab.jsx";
 
@@ -13,6 +14,7 @@ const TABS = [
   ["sng", "Sit and Go"],
   ["rewards", "奖励纪录表"],
   ["prizes", "客户奖品"],
+  ["customers", "客户名单"],
   ["logs", "修改纪录"],
   ["admins", "管理员"],
 ];
@@ -162,6 +164,8 @@ export default function Dashboard({ admin, onSignedOut }) {
                     ? `${rewards.rewards.reduce((n, r) => n + r.available, 0)} 个未使用奖励`
                     : tab === "prizes"
                     ? `${(prizes.totals || []).reduce((n, t) => n + t.balance, 0)} 张奖品未取走`
+                    : tab === "customers"
+                    ? `${players.length} 位客户`
                     : `${players.filter((p) => p.inCash).length} 位玩家`}
                 </div>
                 <div
@@ -242,6 +246,7 @@ export default function Dashboard({ admin, onSignedOut }) {
             flash={flash}
           />
         )}
+        {tab === "customers" && <CustomersTab call={call} title={title} flash={flash} />}
         {tab === "logs" && <LogsTab call={call} title={title} />}
         {tab === "admins" && <AdminsTab admin={admin} call={call} flash={flash} />}
       </main>
