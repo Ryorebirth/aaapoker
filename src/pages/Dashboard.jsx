@@ -4,6 +4,7 @@ import { C, DEFAULT_TITLE, FONT, isEnter } from "../utils.js";
 import RankingTab from "./RankingTab.jsx";
 import SngTab from "./SngTab.jsx";
 import RewardsTab from "./RewardsTab.jsx";
+import PrizesTab from "./PrizesTab.jsx";
 import LogsTab from "./LogsTab.jsx";
 import AdminsTab from "./AdminsTab.jsx";
 
@@ -11,6 +12,7 @@ const TABS = [
   ["ranking", "常规赛"],
   ["sng", "Sit and Go"],
   ["rewards", "奖励纪录表"],
+  ["prizes", "客户奖品"],
   ["logs", "修改纪录"],
   ["admins", "管理员"],
 ];
@@ -21,6 +23,7 @@ export default function Dashboard({ admin, onSignedOut }) {
   const [sng, setSng] = useState({ standings: [], games: [], totalGames: 0 });
   const [sngLoaded, setSngLoaded] = useState(false);
   const [rewards, setRewards] = useState({ rewards: [], history: [] });
+  const [prizes, setPrizes] = useState({ types: [], totals: [], players: [], history: [], knownPeriods: [] });
   const [title, setTitle] = useState(DEFAULT_TITLE);
   const [titleDraft, setTitleDraft] = useState(DEFAULT_TITLE);
   const [loaded, setLoaded] = useState(false);
@@ -50,8 +53,14 @@ export default function Dashboard({ admin, onSignedOut }) {
 
   const refresh = useCallback(async () => {
     try {
-      const [r, s, rw] = await Promise.all([call("/players"), call("/sng"), call("/rewards")]);
+      const [r, s, rw, pz] = await Promise.all([
+        call("/players"),
+        call("/sng"),
+        call("/rewards"),
+        call("/prizes"),
+      ]);
       setRewards(rw);
+      setPrizes(pz);
       setPlayers(r.players);
       setTitle(r.title);
       if (!titleFocused.current) setTitleDraft(r.title);
@@ -151,6 +160,8 @@ export default function Dashboard({ admin, onSignedOut }) {
                     ? `${sng.standings.length} 位玩家　${sng.totalGames} 场`
                     : tab === "rewards"
                     ? `${rewards.rewards.reduce((n, r) => n + r.available, 0)} 个未使用奖励`
+                    : tab === "prizes"
+                    ? `${(prizes.totals || []).reduce((n, t) => n + t.balance, 0)} 张奖品未取走`
                     : `${players.filter((p) => p.inCash).length} 位玩家`}
                 </div>
                 <div
@@ -219,6 +230,17 @@ export default function Dashboard({ admin, onSignedOut }) {
         )}
         {tab === "rewards" && (
           <RewardsTab data={rewards} loaded={sngLoaded} title={title} call={call} refresh={refresh} flash={flash} />
+        )}
+        {tab === "prizes" && (
+          <PrizesTab
+            data={prizes}
+            loaded={sngLoaded}
+            players={players}
+            title={title}
+            call={call}
+            refresh={refresh}
+            flash={flash}
+          />
         )}
         {tab === "logs" && <LogsTab call={call} title={title} />}
         {tab === "admins" && <AdminsTab admin={admin} call={call} flash={flash} />}

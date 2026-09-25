@@ -29,6 +29,10 @@ const ACTIONS = {
   sng_reward: "修改奖励",
   reward_use: "使用奖励",
   reward_undo: "取消使用奖励",
+  prize_grant: "发放奖品",
+  prize_take: "客人取走奖品",
+  prize_undo: "撤销奖品纪录",
+  prize_type: "奖品种类",
   sng_period: "修改结算日期",
 };
 
@@ -36,6 +40,7 @@ const FILTERS = [
   ["all", "全部"],
   ["cash", "常规赛"],
   ["sng", "Sit and Go"],
+  ["prize", "客户奖品"],
   ["admin", "帐号"],
 ];
 
@@ -79,6 +84,7 @@ export default function LogsTab({ call, title }) {
   const shown = logs.filter((l) => {
     if (filter === "cash" && l.board !== "cash") return false;
     if (filter === "sng" && l.board !== "sng") return false;
+    if (filter === "prize" && l.board !== "prize") return false;
     if (filter === "admin" && l.board) return false;
     if (!q) return true;
     return (
@@ -96,7 +102,7 @@ export default function LogsTab({ call, title }) {
       shown.map((l) => [
         fmtDateTime(l.createdAt),
         l.adminUsername,
-        l.board === "cash" ? "常规赛" : l.board === "sng" ? "Sit and Go" : "",
+        l.board === "cash" ? "常规赛" : l.board === "sng" ? "Sit and Go" : l.board === "prize" ? "客户奖品" : "",
         ACTIONS[l.action] || l.action,
         l.playerName || "",
         l.playerPhone ? `="${l.playerPhone}"` : "",
@@ -194,9 +200,12 @@ export default function LogsTab({ call, title }) {
                   {l.board && (
                     <span
                       className="inline-block mr-2 px-1.5 py-0.5 rounded text-xs font-semibold"
-                      style={{ background: l.board === "sng" ? "#F3EBD6" : C.tint, color: l.board === "sng" ? "#6B4E12" : C.felt }}
+                      style={{
+                        background: l.board === "sng" ? "#F3EBD6" : l.board === "prize" ? "#E8EEF6" : C.tint,
+                        color: l.board === "sng" ? "#6B4E12" : l.board === "prize" ? "#2B4A78" : C.felt,
+                      }}
                     >
-                      {l.board === "sng" ? "SnG" : "Cash"}
+                      {l.board === "sng" ? "SnG" : l.board === "prize" ? "奖品" : "Cash"}
                     </span>
                   )}
                   <span className="font-semibold">{ACTIONS[l.action] || l.action}</span>

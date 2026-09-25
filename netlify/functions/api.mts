@@ -14,6 +14,7 @@ import {
   maskPhone,
   newSessionToken,
   REWARD_OPTIONS,
+  hkToday,
   dayStart,
   defaultMonthStart,
   defaultYearStart,
@@ -127,8 +128,18 @@ async function log(query: Query, entry: {
 
 // ---------- Auth ----------
 
+/** The session token, from the cookie (web) or an Authorization header (mini program). */
+function sessionToken(req: Request): string | null {
+  const auth = req.headers.get("authorization") || "";
+  if (auth.toLowerCase().startsWith("bearer ")) {
+    const value = auth.slice(7).trim();
+    if (value) return value;
+  }
+  return getCookie(req, SESSION_COOKIE);
+}
+
 async function currentAdmin(req: Request): Promise<Admin | null> {
-  const token = getCookie(req, SESSION_COOKIE);
+  const token = sessionToken(req);
   if (!token) return null;
   const rows = await q(
     `SELECT a.id, a.username
@@ -155,6 +166,11 @@ async function authStatus(req: Request) {
   return json({ needsSetup: count === 0, admin });
 }
 
+/** Clients without cookies (the WeChat mini program) ask for the token in the response body. */
+function wantsToken(body: Record<string, unknown>) {
+  return body.tokenAuth === true;
+}
+
 async function setup(req: Request) {
   const body = await readJson(req);
   const username = validUsername(body.username);
@@ -172,7 +188,9 @@ async function setup(req: Request) {
     await log(query, { action: "admin_create", admin: username, detail: `建立第一个管理员 ${username}` });
     return { admin, token };
   });
-  return json({ admin: result.admin }, 201, { "Set-Cookie": sessionCookie(result.token) });
+  return json({ admin: result.admin, token: wantsToken(body) ? result.token : undefined }, 201, {
+    "Set-Cookie": sessionCookie(result.token),
+  });
 }
 
 async function login(req: Request) {
@@ -212,13 +230,15 @@ async function login(req: Request) {
     await log(query, { action: "login", admin: admin.username });
     return createSession(query, admin.id);
   });
-  return json({ admin: { id: admin.id, username: admin.username } }, 200, {
-    "Set-Cookie": sessionCookie(token),
-  });
+  return json(
+    { admin: { id: admin.id, username: admin.username }, token: wantsToken(body) ? token : undefined },
+    200,
+    { "Set-Cookie": sessionCookie(token) }
+  );
 }
 
 async function logout(req: Request) {
-  const token = getCookie(req, SESSION_COOKIE);
+  const token = sessionToken(req);
   if (token) await q(`DELETE FROM sessions WHERE token_hash = $1`, [sha256(token)]);
   return json({ ok: true }, 200, { "Set-Cookie": clearSessionCookie() });
 }
@@ -595,6 +615,268 @@ async function updateSngReward(req: Request, admin: Admin, gameId: number, place
   return json(result);
 }
 
+// ---------- Customer prizes ----------
+
+const PRIZE_PERIOD_RE = /^\d{4}-\d{2}$/;
+
+function currentPeriod() {
+  return hkToday().slice(0, 7);
+}
+
+async function prizeOverview(url: URL) {
+  const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 300, 1), 1000);
+  const period = url.searchParams.get("period");
+
+  const types = await q(
+    `SELECT id, name, active, sort_order FROM prize_types ORDER BY sort_order, id`
+  );
+  const balances = await q(
+    `SELECT p.id AS player_id, p.name, p.phone, e.prize_type_id,
+            SUM(e.quantity)::int AS balance,
+            SUM(CASE WHEN e.quantity > 0 THEN e.quantity ELSE 0 END)::int AS granted,
+            SUM(CASE WHEN e.quantity < 0 THEN -e.quantity ELSE 0 END)::int AS taken,
+            MAX(e.created_at) AS last_at
+       FROM prize_entries e
+       JOIN players p ON p.id = e.player_id
+      GROUP BY p.id, p.name, p.phone, e.prize_type_id
+      ORDER BY p.name`
+  );
+  const history = await q(
+    `SELECT e.id, e.quantity, e.period, e.note, e.admin_username, e.created_at,
+            p.id AS player_id, p.name, p.phone, t.id AS type_id, t.name AS type_name
+       FROM prize_entries e
+       JOIN players p ON p.id = e.player_id
+       JOIN prize_types t ON t.id = e.prize_type_id
+      WHERE ($1::text IS NULL OR e.period = $1::text)
+      ORDER BY e.created_at DESC, e.id DESC
+      LIMIT $2`,
+    [period && PRIZE_PERIOD_RE.test(period) ? period : null, limit]
+  );
+  const periods = await q(
+    `SELECT period, COUNT(*)::int AS count FROM prize_entries
+      WHERE period IS NOT NULL GROUP BY period ORDER BY period DESC LIMIT 24`
+  );
+
+  // Group the per-type rows into one row per player
+  const byPlayer = new Map<number, any>();
+  balances.forEach((b) => {
+    if (!byPlayer.has(b.player_id)) {
+      byPlayer.set(b.player_id, { playerId: b.player_id, name: b.name, phone: b.phone, items: [] });
+    }
+    byPlayer.get(b.player_id).items.push({
+      typeId: b.prize_type_id,
+      balance: b.balance,
+      granted: b.granted,
+      taken: b.taken,
+      lastAt: b.last_at,
+    });
+  });
+
+  return json({
+    currentPeriod: currentPeriod(),
+    types: types.map((t) => ({ id: t.id, name: t.name, active: t.active, sortOrder: t.sort_order })),
+    totals: types.map((t) => {
+      const rows = balances.filter((b) => b.prize_type_id === t.id);
+      return {
+        typeId: t.id,
+        name: t.name,
+        balance: rows.reduce((n, r) => n + r.balance, 0),
+        granted: rows.reduce((n, r) => n + r.granted, 0),
+        taken: rows.reduce((n, r) => n + r.taken, 0),
+        holders: rows.filter((r) => r.balance > 0).length,
+      };
+    }),
+    players: [...byPlayer.values()],
+    history: history.map((h) => ({
+      id: Number(h.id),
+      quantity: h.quantity,
+      period: h.period,
+      note: h.note,
+      adminUsername: h.admin_username,
+      createdAt: h.created_at,
+      playerId: h.player_id,
+      name: h.name,
+      phone: h.phone,
+      typeId: h.type_id,
+      typeName: h.type_name,
+    })),
+    knownPeriods: periods.map((p) => ({ period: p.period, count: p.count })),
+  });
+}
+
+async function createPrizeType(req: Request, admin: Admin) {
+  const body = await readJson(req);
+  const name = String(body.name ?? "").trim().slice(0, 40);
+  if (!name) throw new HttpError(400, "请输入奖品名称");
+  const type = await tx(async (query) => {
+    const exists = await query(`SELECT 1 FROM prize_types WHERE name = $1`, [name]);
+    if (exists.length) throw new HttpError(409, "已经有同名的奖品");
+    const [{ max }] = await query(`SELECT COALESCE(MAX(sort_order), 0)::int AS max FROM prize_types`);
+    const [row] = await query(
+      `INSERT INTO prize_types (name, sort_order, created_by) VALUES ($1, $2, $3) RETURNING *`,
+      [name, max + 1, admin.username]
+    );
+    await log(query, {
+      action: "prize_type",
+      board: "prize",
+      admin: admin.username,
+      detail: `新增奖品种类「${name}」`,
+    });
+    return row;
+  });
+  return json({ type: { id: type.id, name: type.name, active: type.active, sortOrder: type.sort_order } }, 201);
+}
+
+async function updatePrizeType(req: Request, admin: Admin, id: number) {
+  const body = await readJson(req);
+  const type = await tx(async (query) => {
+    const [old] = await query(`SELECT * FROM prize_types WHERE id = $1 FOR UPDATE`, [id]);
+    if (!old) throw new HttpError(404, "找不到这个奖品种类");
+    const name = body.name === undefined ? old.name : String(body.name).trim().slice(0, 40);
+    const active = body.active === undefined ? old.active : !!body.active;
+    if (!name) throw new HttpError(400, "请输入奖品名称");
+    if (name !== old.name) {
+      const exists = await query(`SELECT 1 FROM prize_types WHERE name = $1 AND id <> $2`, [name, id]);
+      if (exists.length) throw new HttpError(409, "已经有同名的奖品");
+    }
+    if (name === old.name && active === old.active) return old;
+    const [row] = await query(
+      `UPDATE prize_types SET name = $1, active = $2 WHERE id = $3 RETURNING *`,
+      [name, active, id]
+    );
+    const changes = [];
+    if (name !== old.name) changes.push(`名称 ${old.name} → ${name}`);
+    if (active !== old.active) changes.push(active ? "重新启用" : "停用");
+    await log(query, {
+      action: "prize_type",
+      board: "prize",
+      admin: admin.username,
+      detail: `${old.name}：${changes.join("；")}`,
+    });
+    return row;
+  });
+  return json({ type: { id: type.id, name: type.name, active: type.active, sortOrder: type.sort_order } });
+}
+
+/** Adds a movement: a positive quantity hands a prize out, a negative one takes it back. */
+async function createPrizeEntry(req: Request, admin: Admin) {
+  const body = await readJson(req);
+  const typeId = validId(String(body.typeId ?? ""));
+  const quantity = Math.trunc(Number(body.quantity));
+  if (!Number.isFinite(quantity) || quantity === 0 || Math.abs(quantity) > 999) {
+    throw new HttpError(400, "数量必须是不等于 0 的整数");
+  }
+  const note = String(body.note ?? "").trim().slice(0, 200) || null;
+  const period = String(body.period ?? "").trim() || currentPeriod();
+  if (!PRIZE_PERIOD_RE.test(period)) throw new HttpError(400, "月份格式不正确，请用 2026-09 这种格式");
+
+  const name = String(body.name ?? "").trim();
+  const phone = String(body.phone ?? "").trim();
+  const playerId = body.playerId ? validId(String(body.playerId)) : null;
+
+  const result = await tx(async (query) => {
+    const [type] = await query(`SELECT * FROM prize_types WHERE id = $1`, [typeId]);
+    if (!type) throw new HttpError(404, "找不到这个奖品种类");
+
+    // Find the player by id, or by phone, registering a new one if needed
+    let player = null;
+    if (playerId) {
+      [player] = await query(`SELECT * FROM players WHERE id = $1 FOR UPDATE`, [playerId]);
+      if (!player) throw new HttpError(404, "找不到这位玩家");
+    } else {
+      if (!/^\+?[\d\s-]{6,20}$/.test(phone)) throw new HttpError(400, "手机号格式不正确");
+      [player] = await query(`SELECT * FROM players WHERE phone_normalized = $1 FOR UPDATE`, [normPhone(phone)]);
+      if (!player) {
+        if (!name) throw new HttpError(400, "这是新玩家，请输入姓名");
+        [player] = await query(
+          `INSERT INTO players (name, phone, phone_normalized, points, in_cash, created_by, updated_by)
+           VALUES ($1, $2, $3, 0, FALSE, $4, $4) RETURNING *`,
+          [name.slice(0, 50), phone, normPhone(phone), admin.username]
+        );
+      }
+    }
+
+    const [{ balance }] = await query(
+      `SELECT COALESCE(SUM(quantity), 0)::int AS balance FROM prize_entries
+        WHERE player_id = $1 AND prize_type_id = $2`,
+      [player.id, typeId]
+    );
+    if (quantity < 0 && balance + quantity < 0) {
+      throw new HttpError(409, `${player.name} 现时只有 ${balance} 张「${type.name}」，不够扣`);
+    }
+
+    const [entry] = await query(
+      `INSERT INTO prize_entries (player_id, prize_type_id, quantity, period, note, admin_username)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [player.id, typeId, quantity, period, note, admin.username]
+    );
+    await log(query, {
+      action: quantity > 0 ? "prize_grant" : "prize_take",
+      board: "prize",
+      admin: admin.username,
+      playerId: player.id,
+      playerName: player.name,
+      playerPhone: player.phone,
+      detail:
+        `${quantity > 0 ? "发放" : "取走"} ${Math.abs(quantity)} 张「${type.name}」` +
+        `（${period}，馀 ${balance + quantity} 张）${note ? "：" + note : ""}`,
+    });
+    return { entry, player, type, balance: balance + quantity };
+  });
+
+  return json(
+    {
+      entry: { id: Number(result.entry.id), quantity, period, note },
+      player: { id: result.player.id, name: result.player.name, phone: result.player.phone },
+      typeName: result.type.name,
+      balance: result.balance,
+    },
+    201
+  );
+}
+
+/** Reverses a movement instead of deleting it, so the history stays complete. */
+async function undoPrizeEntry(admin: Admin, id: number) {
+  const result = await tx(async (query) => {
+    const [row] = await query(
+      `SELECT e.*, p.name, p.phone, t.name AS type_name
+         FROM prize_entries e
+         JOIN players p ON p.id = e.player_id
+         JOIN prize_types t ON t.id = e.prize_type_id
+        WHERE e.id = $1
+        FOR UPDATE OF e`,
+      [id]
+    );
+    if (!row) throw new HttpError(404, "找不到这笔纪录");
+    const [{ balance }] = await query(
+      `SELECT COALESCE(SUM(quantity), 0)::int AS balance FROM prize_entries
+        WHERE player_id = $1 AND prize_type_id = $2`,
+      [row.player_id, row.prize_type_id]
+    );
+    if (balance - row.quantity < 0) {
+      throw new HttpError(409, `撤销后存量会变成负数，请先处理 ${row.name} 的其他纪录`);
+    }
+    await query(
+      `INSERT INTO prize_entries (player_id, prize_type_id, quantity, period, note, admin_username)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [row.player_id, row.prize_type_id, -row.quantity, row.period, `撤销纪录 #${id}`, admin.username]
+    );
+    await log(query, {
+      action: "prize_undo",
+      board: "prize",
+      admin: admin.username,
+      playerId: row.player_id,
+      playerName: row.name,
+      playerPhone: row.phone,
+      detail: `撤销：${row.quantity > 0 ? "发放" : "取走"} ${Math.abs(row.quantity)} 张「${row.type_name}」（馀 ${
+        balance - row.quantity
+      } 张）`,
+    });
+    return { name: row.name, typeName: row.type_name, balance: balance - row.quantity };
+  });
+  return json(result);
+}
+
 // ---------- Reward ledger ----------
 
 async function listRewards() {
@@ -939,7 +1221,7 @@ async function changePassword(req: Request, admin: Admin) {
   if (!row || !verifyPassword(current, row.password_hash)) {
     throw new HttpError(400, "目前密码不正确");
   }
-  const token = getCookie(req, SESSION_COOKIE) || "";
+  const token = sessionToken(req) || "";
   await tx(async (query) => {
     await query(`UPDATE admins SET password_hash = $1 WHERE id = $2`, [hashPassword(next), admin.id]);
     // Sign out this admin's other devices
@@ -1035,6 +1317,17 @@ export default async (req: Request, _context: Context) => {
       }
       if (seg.length === 3 && seg[1] === "games" && method === "DELETE") {
         return await deleteSngGame(admin, validId(seg[2]));
+      }
+    }
+    if (seg[0] === "prizes") {
+      if (seg.length === 1 && method === "GET") return await prizeOverview(url);
+      if (path === "/prizes/types" && method === "POST") return await createPrizeType(req, admin);
+      if (seg.length === 3 && seg[1] === "types" && method === "PATCH") {
+        return await updatePrizeType(req, admin, validId(seg[2]));
+      }
+      if (path === "/prizes/entries" && method === "POST") return await createPrizeEntry(req, admin);
+      if (seg.length === 4 && seg[1] === "entries" && seg[3] === "undo" && method === "POST") {
+        return await undoPrizeEntry(admin, validId(seg[2]));
       }
     }
     if (path === "/rewards" && method === "GET") return await listRewards();
