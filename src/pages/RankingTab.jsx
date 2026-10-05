@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import RankMark from "../RankMark.jsx";
 import { buildRankingImage } from "../exportImage.js";
 import {
@@ -40,7 +40,7 @@ function writeLocal(key, value) {
   }
 }
 
-export default function RankingTab({ players, setPlayers, title, loaded, call, refresh, flash }) {
+export default function RankingTab({ players, setPlayers, title, loaded, call, refresh, flash, cashPeriodStart }) {
   const [form, setForm] = useState({ name: "", phone: "", points: "" });
   const [formError, setFormError] = useState("");
   const [adding, setAdding] = useState(false);
@@ -54,6 +54,13 @@ export default function RankingTab({ players, setPlayers, title, loaded, call, r
   const [legacy, setLegacy] = useState(null);
   const [importing, setImporting] = useState(false);
   const nameRef = useRef(null);
+  const [periods, setPeriods] = useState({ periods: [], currentStart: "" });
+  const [closeStep, setCloseStep] = useState(0); // 0 closed, 1 form, 2 confirm
+  const [closeForm, setCloseForm] = useState({ label: "", nextStart: "" });
+  const [closeBusy, setCloseBusy] = useState(false);
+  const [closeError, setCloseError] = useState("");
+  const [openPeriod, setOpenPeriod] = useState(null);
+  const [periodDetail, setPeriodDetail] = useState(null);
 
   useEffect(() => writeLocal(MASK_KEY, maskOn ? "1" : "0"), [maskOn]);
 
@@ -77,6 +84,69 @@ export default function RankingTab({ players, setPlayers, title, loaded, call, r
 
   const cashPlayers = useMemo(() => players.filter((p) => p.inCash), [players]);
   const ranked = useMemo(() => rankPlayers(cashPlayers), [cashPlayers]);
+
+  const loadPeriods = useCallback(async () => {
+    try {
+      setPeriods(await call("/cash/periods"));
+    } catch (e) {
+      // the settlement history is optional on this screen
+    }
+  }, [call]);
+
+  useEffect(() => {
+    loadPeriods();
+  }, [loadPeriods]);
+
+  const startClose = () => {
+    const now = new Date();
+    setCloseForm({
+      label: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`,
+      nextStart: new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10),
+    });
+    setCloseError("");
+    setCloseStep(1);
+  };
+
+  const closePeriod = async () => {
+    if (closeBusy) return;
+    setCloseBusy(true);
+    setCloseError("");
+    try {
+      const r = await call("/cash/close", { method: "POST", body: closeForm });
+      setCloseStep(0);
+      await refresh();
+      await loadPeriods();
+      flash(`已结算「${r.period.label}」，${r.period.playerCount} 位玩家的积分已归零`);
+    } catch (e) {
+      setCloseError(e.message);
+    } finally {
+      setCloseBusy(false);
+    }
+  };
+
+  const viewPeriod = async (id) => {
+    if (openPeriod === id) {
+      setOpenPeriod(null);
+      setPeriodDetail(null);
+      return;
+    }
+    setOpenPeriod(id);
+    setPeriodDetail(null);
+    try {
+      setPeriodDetail(await call(`/cash/periods/${id}`));
+    } catch (e) {
+      flash(e.message);
+    }
+  };
+
+  const exportPeriod = (detail) => {
+    downloadCSV(
+      `${safeName(title)}_常规赛_${detail.period.label}_结算.csv`,
+      ["排名", "姓名", "手机号", "积分"],
+      detail.results.map((r) => [r.rank, r.name, `="${maskOn ? maskPhone(r.phone) : r.phone}"`, r.points])
+    );
+    flash("已汇出结算纪录");
+  };
   const q = query.trim().toLowerCase();
   const visible = q
     ? ranked.filter(
@@ -340,6 +410,155 @@ export default function RankingTab({ players, setPlayers, title, loaded, call, r
           <p className="text-xs mt-3 leading-relaxed" style={{ color: C.muted }}>
             按 Enter 也可以新增。手机号不可重复。日期和修改人会自动记录在资料库。
           </p>
+
+          <div className="mt-5 pt-4 border-t" style={{ borderColor: C.line }}>
+            <h3 className="font-bold">本期结算</h3>
+            <p className="text-xs mt-1" style={{ color: C.muted }}>
+              本期由 {cashPeriodStart || periods.currentStart || "—"} 开始，现时 {cashPlayers.length} 位玩家。
+              结算会把现时名次存档，然后所有积分归零，开始新一期。
+            </p>
+
+            {closeStep === 0 && (
+              <button
+                className={btnSecondary + " mt-3"}
+                style={{ borderColor: C.line, color: C.ink }}
+                onClick={startClose}
+                disabled={!cashPlayers.length}
+              >
+                结算本期并归零
+              </button>
+            )}
+
+            {closeStep === 1 && (
+              <div className="mt-3 rounded-md p-3" style={{ background: C.tint }}>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div>
+                    <label htmlFor="cl-label" className="block text-xs font-medium mb-1">
+                      这一期名称
+                    </label>
+                    <input
+                      id="cl-label"
+                      className={inputCls}
+                      style={{ borderColor: C.line }}
+                      value={closeForm.label}
+                      maxLength={40}
+                      onChange={(e) => setCloseForm({ ...closeForm, label: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="cl-next" className="block text-xs font-medium mb-1">
+                      新一期由
+                    </label>
+                    <input
+                      id="cl-next"
+                      type="date"
+                      className={inputCls}
+                      style={{ borderColor: C.line }}
+                      value={closeForm.nextStart}
+                      onChange={(e) => setCloseForm({ ...closeForm, nextStart: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2 mt-3">
+                  <button className={btnPrimary} style={{ background: C.red }} onClick={() => setCloseStep(2)}>
+                    下一步
+                  </button>
+                  <button
+                    className={btnSecondary}
+                    style={{ borderColor: C.line, color: C.ink }}
+                    onClick={() => setCloseStep(0)}
+                  >
+                    取消
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {closeStep === 2 && (
+              <div className="mt-3 rounded-md p-3" style={{ background: "#FBEAE8" }}>
+                <p className="text-sm">
+                  确定结算「{closeForm.label}」？{cashPlayers.length} 位玩家的积分会全部归零，这个动作无法还原，
+                  但存档的名次可以随时查看和汇出。
+                </p>
+                <div className="flex gap-2 mt-3">
+                  <button
+                    className={btnPrimary}
+                    style={{ background: C.red }}
+                    onClick={closePeriod}
+                    disabled={closeBusy}
+                  >
+                    {closeBusy ? "结算中…" : "确定结算"}
+                  </button>
+                  <button
+                    className={btnSecondary}
+                    style={{ borderColor: C.line, color: C.ink }}
+                    onClick={() => setCloseStep(1)}
+                  >
+                    返回
+                  </button>
+                </div>
+                {closeError && (
+                  <p className="text-sm mt-2" style={{ color: C.red }} role="alert">
+                    {closeError}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {periods.periods.length > 0 && (
+              <div className="mt-4">
+                <h3 className="font-bold text-sm mb-2">过往结算</h3>
+                <ul>
+                  {periods.periods.map((p) => (
+                    <li key={p.id} className="py-2 border-t text-sm" style={{ borderColor: C.line }}>
+                      <div className="flex flex-wrap items-center gap-x-2">
+                        <span className="font-semibold">{p.label}</span>
+                        <span className="text-xs" style={{ color: C.muted }}>
+                          {p.playerCount} 人　{fmt(p.totalPoints)} 分
+                        </span>
+                        <button
+                          className={btnRow + " ml-auto"}
+                          style={{ color: C.felt }}
+                          onClick={() => viewPeriod(p.id)}
+                        >
+                          {openPeriod === p.id ? "收起" : "查看"}
+                        </button>
+                      </div>
+                      <div className="text-xs" style={{ color: C.muted }}>
+                        {p.top.map((t) => `${t.rank}. ${t.name}`).join("　")}
+                      </div>
+                      {openPeriod === p.id && (
+                        <div className="mt-2 rounded-md p-2" style={{ background: C.tint }}>
+                          {!periodDetail ? (
+                            <p className="text-xs" style={{ color: C.muted }}>
+                              载入中…
+                            </p>
+                          ) : (
+                            <>
+                              <ol className="text-xs flex flex-col gap-1">
+                                {periodDetail.results.map((r) => (
+                                  <li key={`${r.rank}-${r.name}-${r.phone}`} className="tabular-nums">
+                                    {r.rank}. {r.name}　{fmt(r.points)} 分
+                                  </li>
+                                ))}
+                              </ol>
+                              <button
+                                className={btnRow + " mt-2"}
+                                style={{ color: C.felt }}
+                                onClick={() => exportPeriod(periodDetail)}
+                              >
+                                汇出这一期
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
         </section>
 
         <section

@@ -23,6 +23,7 @@ export default function Dashboard({ admin, onSignedOut }) {
   const [tab, setTab] = useState("ranking");
   const [players, setPlayers] = useState([]);
   const [sng, setSng] = useState({ standings: [], games: [], totalGames: 0 });
+  const [cashPeriodStart, setCashPeriodStart] = useState("");
   const [sngLoaded, setSngLoaded] = useState(false);
   const [rewards, setRewards] = useState({ rewards: [], history: [] });
   const [prizes, setPrizes] = useState({ types: [], totals: [], players: [], history: [], knownPeriods: [] });
@@ -64,6 +65,7 @@ export default function Dashboard({ admin, onSignedOut }) {
       setRewards(rw);
       setPrizes(pz);
       setPlayers(r.players);
+      setCashPeriodStart(r.cashPeriodStart || "");
       setTitle(r.title);
       if (!titleFocused.current) setTitleDraft(r.title);
       setSng(s);
@@ -219,6 +221,7 @@ export default function Dashboard({ admin, onSignedOut }) {
             call={call}
             refresh={refresh}
             flash={flash}
+            cashPeriodStart={cashPeriodStart}
           />
         )}
         {tab === "sng" && (

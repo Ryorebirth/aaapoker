@@ -248,7 +248,11 @@ async function logout(req: Request) {
 async function listPlayers() {
   const rows = await q(`SELECT * FROM players ORDER BY points DESC, name ASC`);
   const [setting] = await q(`SELECT value FROM settings WHERE key = 'title'`);
-  return json({ title: setting?.value ?? "扑克积分排行榜", players: rows.map(toPlayer) });
+  return json({
+    title: setting?.value ?? "扑克积分排行榜",
+    players: rows.map(toPlayer),
+    cashPeriodStart: await cashPeriodStart(q),
+  });
 }
 
 async function duplicateMessage(query: Query, phoneNormalized: string, excludeId?: number) {
@@ -613,6 +617,133 @@ async function updateSngReward(req: Request, admin: Admin, gameId: number, place
     return { reward: next };
   });
   return json(result);
+}
+
+// ---------- Cash Game monthly settlement ----------
+
+async function cashPeriodStart(query: Query) {
+  const [row] = await query(`SELECT value FROM settings WHERE key = 'cash_period_start'`);
+  return row?.value || defaultMonthStart();
+}
+
+/** Archives the current table, then sets every Cash Game player back to zero. */
+async function closeCashPeriod(req: Request, admin: Admin) {
+  const body = await readJson(req);
+  const label = String(body.label ?? "").trim().slice(0, 40) || hkToday().slice(0, 7);
+  const nextStart = body.nextStart ? validDate(body.nextStart, "新一期起计日期") : hkToday();
+
+  const result = await tx(async (query) => {
+    const players = await query(
+      `SELECT * FROM players WHERE in_cash ORDER BY points DESC, name ASC FOR UPDATE`
+    );
+    if (!players.length) throw new HttpError(400, "现时没有常规赛玩家，不需要结算");
+
+    const startedOn = await cashPeriodStart(query);
+    const total = players.reduce((n, p) => n + Number(p.points), 0);
+    const [period] = await query(
+      `INSERT INTO cash_periods (label, started_on, closed_by, player_count, total_points)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [label, startedOn, admin.username, players.length, total]
+    );
+
+    // Ranks are shared by equal scores, the same way the board shows them
+    let prevPoints = null;
+    let prevRank = 0;
+    for (let i = 0; i < players.length; i++) {
+      const p = players[i];
+      const points = Number(p.points);
+      const rank = points === prevPoints ? prevRank : i + 1;
+      prevPoints = points;
+      prevRank = rank;
+      await query(
+        `INSERT INTO cash_period_results (period_id, player_id, name, phone, points, rank)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [period.id, p.id, p.name, p.phone, points, rank]
+      );
+    }
+
+    await query(`UPDATE players SET points = 0, updated_at = NOW(), updated_by = $1 WHERE in_cash`, [
+      admin.username,
+    ]);
+    await query(
+      `INSERT INTO settings (key, value) VALUES ('cash_period_start', $1)
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+      [nextStart]
+    );
+    await log(query, {
+      action: "cash_close",
+      board: "cash",
+      admin: admin.username,
+      detail: `结算「${label}」：${players.length} 位玩家、合共 ${total} 分已存档，积分归零，新一期由 ${nextStart} 开始`,
+    });
+
+    return { period, count: players.length, total, nextStart };
+  });
+
+  return json(
+    {
+      period: {
+        id: result.period.id,
+        label: result.period.label,
+        playerCount: result.count,
+        totalPoints: result.total,
+      },
+      nextStart: result.nextStart,
+    },
+    201
+  );
+}
+
+async function listCashPeriods() {
+  const periods = await q(
+    `SELECT p.*,
+            (SELECT json_agg(json_build_object('name', r.name, 'points', r.points, 'rank', r.rank))
+               FROM (SELECT * FROM cash_period_results WHERE period_id = p.id ORDER BY rank LIMIT 3) r
+            ) AS top
+       FROM cash_periods p
+      ORDER BY p.closed_at DESC
+      LIMIT 60`
+  );
+  return json({
+    currentStart: await cashPeriodStart(q),
+    periods: periods.map((p) => ({
+      id: p.id,
+      label: p.label,
+      startedOn: p.started_on,
+      closedAt: p.closed_at,
+      closedBy: p.closed_by,
+      playerCount: p.player_count,
+      totalPoints: Number(p.total_points),
+      top: p.top || [],
+    })),
+  });
+}
+
+async function cashPeriodDetail(id: number) {
+  const [period] = await q(`SELECT * FROM cash_periods WHERE id = $1`, [id]);
+  if (!period) throw new HttpError(404, "找不到这一期结算纪录");
+  const rows = await q(
+    `SELECT * FROM cash_period_results WHERE period_id = $1 ORDER BY rank, points DESC, name`,
+    [id]
+  );
+  return json({
+    period: {
+      id: period.id,
+      label: period.label,
+      startedOn: period.started_on,
+      closedAt: period.closed_at,
+      closedBy: period.closed_by,
+      playerCount: period.player_count,
+      totalPoints: Number(period.total_points),
+    },
+    results: rows.map((r) => ({
+      rank: r.rank,
+      playerId: r.player_id,
+      name: r.name,
+      phone: r.phone,
+      points: Number(r.points),
+    })),
+  });
 }
 
 // ---------- Customer list ----------
@@ -1394,6 +1525,43 @@ async function board() {
     sngGameCount(q, periods.yearStart),
   ]);
   const [setting] = await q(`SELECT value FROM settings WHERE key = 'title'`);
+  const cashStart = await cashPeriodStart(q);
+
+  // Prize stock shown on the board: who still holds what, phone numbers masked
+  const prizeRows = await q(
+    `SELECT p.id, p.name, p.phone, t.name AS type_name, SUM(e.quantity)::int AS balance
+       FROM prize_entries e
+       JOIN players p ON p.id = e.player_id
+       JOIN prize_types t ON t.id = e.prize_type_id
+      GROUP BY p.id, p.name, p.phone, t.id, t.name
+     HAVING SUM(e.quantity) > 0
+      ORDER BY p.name`
+  );
+  const prizeByPlayer = new Map<number, any>();
+  prizeRows.forEach((r) => {
+    if (!prizeByPlayer.has(r.id)) {
+      prizeByPlayer.set(r.id, {
+        id: r.id,
+        name: r.name,
+        phoneMasked: maskPhone(r.phone),
+        items: [],
+        total: 0,
+      });
+    }
+    const entry = prizeByPlayer.get(r.id);
+    entry.items.push({ name: r.type_name, balance: r.balance });
+    entry.total += r.balance;
+  });
+  const prizeHolders = [...prizeByPlayer.values()].sort(
+    (a, b) => b.total - a.total || a.name.localeCompare(b.name, "zh-Hans")
+  );
+  const prizeTotals = [];
+  prizeRows.forEach((r) => {
+    const hit = prizeTotals.find((t) => t.name === r.type_name);
+    if (hit) hit.balance += r.balance;
+    else prizeTotals.push({ name: r.type_name, balance: r.balance });
+  });
+
   const publicRow = (s: any) => ({
     id: s.id,
     name: s.name,
@@ -1415,8 +1583,10 @@ async function board() {
     sng: standings.map(publicRow),
     sngMonth: monthStandings.map(publicRow),
     sngYear: yearStandings.map(publicRow),
-    periods: { ...periods, monthGames, yearGames },
+    periods: { ...periods, monthGames, yearGames, cashStart },
     totalGames: count,
+    prizes: prizeHolders,
+    prizeTotals,
   });
 }
 
@@ -1463,6 +1633,11 @@ export default async (req: Request, _context: Context) => {
       if (seg.length === 3 && seg[1] === "games" && method === "DELETE") {
         return await deleteSngGame(admin, validId(seg[2]));
       }
+    }
+    if (path === "/cash/close" && method === "POST") return await closeCashPeriod(req, admin);
+    if (path === "/cash/periods" && method === "GET") return await listCashPeriods();
+    if (seg[0] === "cash" && seg[1] === "periods" && seg.length === 3 && method === "GET") {
+      return await cashPeriodDetail(validId(seg[2]));
     }
     if (path === "/customers" && method === "GET") return await listCustomers();
     if (seg[0] === "customers" && seg.length === 2 && method === "GET") {

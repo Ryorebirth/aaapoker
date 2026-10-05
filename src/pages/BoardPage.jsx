@@ -19,9 +19,10 @@ const VIEWS = [
   ["cash", "常规赛"],
   ["month", "月度"],
   ["year", "年度"],
+  ["prizes", "奖品"],
   ["rotate", "轮流显示"],
 ];
-const ROTATION = ["cash", "month", "year"];
+const ROTATION = ["cash", "month", "year", "prizes"];
 // A TV cannot scroll, so a long list is paged through at a steady size instead
 const PAGE_SECONDS = 10;
 // Nobody waits through ten pages, so a paged board stops after this many
@@ -110,7 +111,7 @@ function readView() {
   // "sng" is what older links and the TV app send; it now means the monthly board
   if (v === "sng" || v === "sng-month") return "month";
   if (v === "sng-year") return "year";
-  return ["cash", "month", "year", "rotate"].includes(v) ? v : "cash";
+  return ["cash", "month", "year", "prizes", "rotate"].includes(v) ? v : "cash";
 }
 
 /*
@@ -249,6 +250,29 @@ function CashRow({ p, big, change, t }) {
         className={`${big ? t.bigPoints : t.points} font-bold tabular-nums text-white whitespace-nowrap ml-4 leading-none`}
       >
         {fmt(p.points)}
+      </div>
+    </Row>
+  );
+}
+
+/** One customer and how many of each prize they still hold. */
+function PrizeRow({ p, big, change, t }) {
+  return (
+    <Row p={p} big={big} change={change} t={t}>
+      <div className="flex items-end tabular-nums ml-3">
+        {p.items.map((it, i) => (
+          <div key={it.name} className={i ? "text-center ml-4" : "text-center"} style={{ minWidth: big ? 110 : 84 }}>
+            <div
+              className={`${big ? t.bigFirst : t.first} font-bold leading-none`}
+              style={{ color: it.balance ? "#fff" : "rgba(255,255,255,0.45)" }}
+            >
+              {it.balance}
+            </div>
+            <div className={`${t.label} mt-1`} style={{ color: "rgba(255,255,255,0.6)" }}>
+              {it.name}
+            </div>
+          </div>
+        ))}
       </div>
     </Row>
   );
@@ -480,6 +504,17 @@ export default function BoardPage() {
   };
 
   const cashRanked = useMemo(() => rankPlayers(data.players), [data.players]);
+  // The server already sorts prize holders by how much they hold
+  const prizeRanked = useMemo(() => {
+    let prev = null;
+    let prevRank = 0;
+    return (data.prizes || []).map((p, i) => {
+      const rank = p.total === prev ? prevRank : i + 1;
+      prev = p.total;
+      prevRank = rank;
+      return { ...p, rank };
+    });
+  }, [data.prizes]);
   const monthRanked = useMemo(() => rankSng(data.sngMonth), [data.sngMonth]);
   const yearRanked = useMemo(() => rankSng(data.sngYear), [data.sngYear]);
   const cashChanges = useChanges(cashRanked, loaded, cashDiff);
@@ -489,12 +524,15 @@ export default function BoardPage() {
   const active = view === "rotate" ? rotating : view;
   const isSng = active === "month" || active === "year";
   const isYear = active === "year";
-  const ranked = isSng ? (isYear ? yearRanked : monthRanked) : cashRanked;
+  const isPrizes = active === "prizes";
+  const ranked = isPrizes ? prizeRanked : isSng ? (isYear ? yearRanked : monthRanked) : cashRanked;
   const periods = data.periods;
   const periodStart = periods ? (isYear ? periods.yearStart : periods.monthStart) : null;
   const periodGames = periods ? (isYear ? periods.yearGames : periods.monthGames) : 0;
 
-  const lastUpdate = isSng
+  const lastUpdate = isPrizes
+    ? 0
+    : isSng
     ? ranked.reduce((m, p) => Math.max(m, new Date(p.lastAt).getTime() || 0), 0)
     : data.players.reduce((m, p) => Math.max(m, new Date(p.updatedAt).getTime() || 0), 0);
 
@@ -534,13 +572,26 @@ export default function BoardPage() {
                 />
                 {syncOk ? "即时更新中" : "连线中断，正在重试"}
               </span>
-              <span className="mr-4">{ranked.length} 位玩家</span>
+              <span className="mr-4">
+                {isPrizes ? `${ranked.length} 位客户持有` : `${ranked.length} 位玩家`}
+              </span>
+              {isPrizes &&
+                (data.prizeTotals || []).map((t) => (
+                  <span key={t.name} className="mr-4">
+                    {t.name} {t.balance}
+                  </span>
+                ))}
+              {!isSng && !isPrizes && periods && periods.cashStart && (
+                <span className="mr-4">{periodLabel(periods.cashStart)}起</span>
+              )}
               {isSng && periodStart && (
                 <span className="mr-4">
                   {periodLabel(periodStart)}起　{periodGames} 场
                 </span>
               )}
-              <span className="mr-4 hidden sm:inline">最后更新 {fmtDateTime(lastUpdate || null)}</span>
+              {!isPrizes && (
+                <span className="mr-4 hidden sm:inline">最后更新 {fmtDateTime(lastUpdate || null)}</span>
+              )}
             </div>
           </div>
           <div className="text-right shrink-0 ml-4">
@@ -595,9 +646,13 @@ export default function BoardPage() {
           </p>
         ) : ranked.length === 0 ? (
           <div className="py-20 text-center" style={{ color: "rgba(255,255,255,0.7)" }}>
-            <p className="text-xl font-semibold text-white mb-2">{isSng ? "这一期还没有赛果" : "还没有玩家"}</p>
+            <p className="text-xl font-semibold text-white mb-2">
+              {isPrizes ? "现时没有未取走的奖品" : isSng ? "这一期还没有赛果" : "还没有玩家"}
+            </p>
             <p>
-              {isSng
+              {isPrizes
+                ? "管理员发放奖品后，这里会显示每位客户手上还有多少。"
+                : isSng
                 ? "管理员记录 Sit and Go 赛果后，这里会即时显示排名。"
                 : "管理员新增玩家后，这里会即时显示积分。"}
             </p>
@@ -605,15 +660,15 @@ export default function BoardPage() {
         ) : (
           <BoardList
             ranked={ranked}
-            changes={isSng ? (isYear ? yearChanges : monthChanges) : cashChanges}
-            RowComponent={isSng ? SngRow : CashRow}
+            changes={isPrizes ? {} : isSng ? (isYear ? yearChanges : monthChanges) : cashChanges}
+            RowComponent={isPrizes ? PrizeRow : isSng ? SngRow : CashRow}
             bigRank={isSng ? SNG_BIG_ROWS : undefined}
+            bigCount={isPrizes ? 0 : undefined}
             tier={tier}
-            // Sit and Go is paged on tablets too; the cash list only on a TV
-            paged={isSng ? tier !== "phone" : TIERS[tier].paged}
-            // Sit and Go rows are wide, so they always stay in one column —
-            // that also keeps 月度 and 年度 looking exactly the same
-            allowTwoColumns={!isSng}
+            // Sit and Go and the prize board are paged on tablets too; the cash list only on a TV
+            paged={isSng || isPrizes ? tier !== "phone" : TIERS[tier].paged}
+            // Wide rows always stay in one column, which also keeps 月度 and 年度 identical
+            allowTwoColumns={!isSng && !isPrizes}
             signature={`${active}-${tier}`}
           />
         )}
